@@ -62,9 +62,16 @@ typedef UINT16 UINT2;
 typedef unsigned short int UINT2;
 #endif
 
-/* UINT4 defines a four byte word */
-#ifdef UINT16
+/* UINT4 defines a four byte word.
+ *
+ * Historical bug: this used "#ifdef UINT16" while typedef'ing UINT32, which
+ * broke MD5 / BinkP CRAM on 64-bit hosts (wrong word size). Use UINT32 when
+ * available, otherwise a 32-bit int, else unsigned long.
+ */
+#ifdef UINT32
 typedef UINT32 UINT4;
+#elif SIZEOF_INT==4
+typedef unsigned int UINT4;
 #else
 typedef unsigned long int UINT4;
 #endif
@@ -82,9 +89,9 @@ If using PROTOTYPES, then PROTO_LIST returns the list, otherwise it
 
 /* MD5 context. */
 typedef struct {
-  UINT4 state[4];                                   /* state (ABCD) */
-  UINT4 count[2];        /* number of bits, modulo 2^64 (lsb first) */
-  unsigned char buffer[64];                         /* input buffer */
+    UINT4 state[4];                                   /* state (ABCD) */
+    UINT4 count[2];        /* number of bits, modulo 2^64 (lsb first) */
+    unsigned char buffer[64];                         /* input buffer */
 } MD5_CTX;
 
 
@@ -96,7 +103,7 @@ typedef struct {
 typedef unsigned char md_caddr_t[MD5_DIGEST_LEN];
 
 extern void md5_cram_get(const unsigned char *secret, const unsigned char *challenge,
-         int challenge_length, unsigned char *digest);
+                         int challenge_length, unsigned char *digest);
 extern void md5_cram_set(const unsigned char *challenge);
 
 extern unsigned char *md5_challenge(const unsigned char *buf);

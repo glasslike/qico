@@ -628,7 +628,10 @@ AC_SUBST(PERL_O)
 
 
 dnl add warn flags in maintainer mode
-CFLAGS="$CFLAGS -Wall"
+dnl -fcommon: required for GCC 10+ / Debian 12+ where -fno-common is the
+dnl default; without it the legacy qico sources fail to link with multiple
+dnl definition errors for common globals.
+CFLAGS="$CFLAGS -Wall -fcommon"
 if test "x$USE_MAINTAINER_MODE" = "xyes"; then
     CFLAGS="$CFLAGS -pedantic -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls"
 fi
