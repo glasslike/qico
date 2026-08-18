@@ -35,3 +35,7 @@ Start the daemon first, then the UI. Port and password come from your
 qico -I/path/to/qico.conf -d
 qcc -P 60178 -w 'your-serverpwd'
 ```
+
+## systemd
+
+See [systemd/README.md](systemd/README.md). Install `systemd/qico.service` on the host.

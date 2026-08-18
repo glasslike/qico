@@ -1,0 +1,55 @@
+# qico FTN mailer — systemd unit
+#
+# Install (as root):
+#   cp systemd/qico.service /etc/systemd/system/qico.service
+#   systemctl daemon-reload
+#   systemctl enable --now qico.service
+#
+# Adjust User=/Group= for the account that owns /home/map/ftn
+# (production: map; lab VM may use osboxes).
+#
+# Uses foreground mode (-f) so systemd tracks the main process directly.
+# Config path and binary layout match:
+#   /home/map/ftn/usr/bin/qico
+#   /home/map/ftn/usr/etc/qico/qico.conf
+
+[Unit]
+Description=qico FTN mailer daemon
+Documentation=man:qico(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=map
+Group=map
+
+# Ensure runtime dirs exist (harmless if already present)
+ExecStartPre=/bin/mkdir -p /home/map/ftn/fido/logs /home/map/ftn/fido/outbound /home/map/ftn/fido/inbound /home/map/ftn/fido/nodelist
+
+# Fail early if config is broken
+ExecStartPre=/home/map/ftn/usr/bin/qico -I/home/map/ftn/usr/etc/qico/qico.conf -t
+
+# Foreground daemon (originate / queue manager). Visible to systemd; no double-fork.
+ExecStart=/home/map/ftn/usr/bin/qico -I/home/map/ftn/usr/etc/qico/qico.conf -f
+
+# SIGHUP reloads config (same idea as qctl -R)
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=5
+
+# Soft stop first; escalate if needed
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Working directory: spool root is writable for cores/locks if needed
+WorkingDirectory=/home/map/ftn/fido
+
+# Hardening (safe subset; relax if something breaks on your host)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
