@@ -1,0 +1,28 @@
+# qico-binkp.socket — inbound BinkP listener (TCP 24554)
+#
+# Unlike binkd, qico's queue daemon does NOT listen on 24554.
+# This socket accepts connections and starts qico-binkp@.service
+# (inetd-style: qico -abinkp with the TCP fd on stdin/stdout).
+#
+# Part of qico.target. Stop binkd before enabling so the port is free.
+#
+# Classic inetd equivalent (upstream FAQ):
+#   binkp  stream  tcp  nowait  map  /home/map/ftn/usr/bin/qico  qico -a binkp
+
+[Unit]
+Description=qico BinkP inbound socket (TCP 24554)
+Documentation=man:qico(8)
+PartOf=qico.target
+After=network-online.target
+Wants=network-online.target
+
+[Socket]
+# Standard BinkP port (same as binkd default / etc/services name "binkp")
+ListenStream=24554
+# One answer process per accepted connection → qico-binkp@*.service
+Accept=yes
+# Optional: bind only IPv4 (uncomment if needed)
+# BindIPv4Only=yes
+
+[Install]
+WantedBy=qico.target

@@ -212,10 +212,14 @@ static int xsendget(int sock,char *buf,size_t len)
 
 int main(int argc, char **argv,char **envp)
 {
-    int action=-1, kfs=0, len=0,lkfs,rc=1;
+    /* getopt() returns int (-1/EOF when done). On aarch64 (e.g. Raspberry Pi)
+     * plain `char` is unsigned by default, so assigning -1 becomes 255 and
+     * the option loop never ends — every run falls into usage(). Use int.
+     * (qico itself already used int c in main.c; qctl/qcc did not.) */
+    int action = -1, kfs = 0, len = 0, lkfs, rc = 1, c;
     char filename[MAX_PATH];
-    unsigned char digest[16]={0};
-    char c,*str=NULL,flv='?',*port=NULL,*addr=NULL,*tty=NULL,*pwd=NULL;
+    unsigned char digest[16] = {0};
+    char *str = NULL, flv = '?', *port = NULL, *addr = NULL, *tty = NULL, *pwd = NULL;
     struct stat filestat;
 #ifdef HAVE_SETLOCALE
      setlocale(LC_ALL, "C");

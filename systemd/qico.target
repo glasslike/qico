@@ -1,0 +1,34 @@
+# qico.target — start/stop outbound daemon + inbound BinkP together
+#
+# Production layout (user map, paths under /home/map/ftn):
+#   qico.target
+#     ├─ qico.service           queue / originate (qico -f)
+#     └─ qico-binkp.socket      listen TCP 24554 → qico-binkp@.service
+#
+# Install (as root), with binkd stopped so port 24554 is free:
+#   cp systemd/qico.target \
+#      systemd/qico.service \
+#      systemd/qico-binkp.socket \
+#      systemd/qico-binkp@.service \
+#      /etc/systemd/system/
+#   # Do NOT install qico.service.d/lab-user.conf on production
+#   systemctl daemon-reload
+#   systemctl enable --now qico.target
+#
+# Everyday:
+#   systemctl start|stop|restart|status qico.target
+#   systemctl reload qico.service          # SIGHUP config reread
+#   journalctl -u qico -u 'qico-binkp@*' -f
+
+[Unit]
+Description=qico FTN mailer (daemon + BinkP inbound)
+Documentation=man:qico(8)
+# Pull in both pieces; order after they are up
+Wants=qico.service qico-binkp.socket
+After=network-online.target qico.service qico-binkp.socket
+Wants=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+# Enabling this target also enables the two real units
+Also=qico.service qico-binkp.socket

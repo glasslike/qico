@@ -1259,9 +1259,12 @@ static int getmessages(char *bbx)
 
 int main(int argc, char **argv, char **envp)
 {
-	int len,ch,rc;
+	/* getopt() returns int (-1 when done). On aarch64 (e.g. Raspberry Pi)
+	 * plain `char` is unsigned by default, so assigning -1 becomes 255 and
+	 * the option loop never ends — every run falls into usage(). Use int. */
+	int len, ch, rc, c;
 	struct tm *tt;
-	char buf[4096],*bf,c,*port=NULL,*addr=NULL,*pwd=NULL;
+	char buf[4096], *bf, *port = NULL, *addr = NULL, *pwd = NULL;
 	unsigned char digest[16]={0};
 	fd_set rfds;
 	time_t tim;

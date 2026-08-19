@@ -1,21 +1,17 @@
-# qico FTN mailer — systemd unit
+# qico.service — outbound queue / originate daemon
 #
-# Install (as root):
-#   cp systemd/qico.service /etc/systemd/system/qico.service
-#   systemctl daemon-reload
-#   systemctl enable --now qico.service
+# Part of qico.target (enable/start the target, not this unit alone).
+# Uses foreground mode (-f) so systemd tracks the main process (Type=simple).
 #
-# Adjust User=/Group= for the account that owns /home/map/ftn
-# (production: map; lab VM may use osboxes).
-#
-# Uses foreground mode (-f) so systemd tracks the main process directly.
-# Config path and binary layout match:
-#   /home/map/ftn/usr/bin/qico
-#   /home/map/ftn/usr/etc/qico/qico.conf
+# Paths match production node 2:203/910:
+#   binary: /home/map/ftn/usr/bin/qico
+#   config: /home/map/ftn/usr/etc/qico/qico.conf
+#   spool:  /home/map/ftn/fido
 
 [Unit]
-Description=qico FTN mailer daemon
+Description=qico FTN mailer daemon (originate / queue)
 Documentation=man:qico(8)
+PartOf=qico.target
 After=network-online.target
 Wants=network-online.target
 
@@ -44,7 +40,6 @@ TimeoutStopSec=30
 KillMode=mixed
 KillSignal=SIGTERM
 
-# Working directory: spool root is writable for cores/locks if needed
 WorkingDirectory=/home/map/ftn/fido
 
 # Hardening (safe subset; relax if something breaks on your host)
@@ -52,4 +47,4 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=qico.target
