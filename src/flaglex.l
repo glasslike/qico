@@ -242,3 +242,19 @@ static int chkdate(char *str)
 	DEBUG(('Y',3,"chkdate: %d",now->tm_yday>=d1 && now->tm_yday<=d2));
 	return now->tm_yday>=d1 && now->tm_yday<=d2;
 }
+
+/*
+ * Reset flex state between independent flagexp() parses.
+ *
+ * YY_INPUT feeds from yyPTR. After the first expression hits EOF (YY_NULL),
+ * flex keeps an end-of-buffer state; the next parse never re-reads yyPTR and
+ * fails as "false". That made runtime `if protected` never select the secure
+ * inbound, so password sessions still landed in i_nonsecure.
+ */
+void flaglex_reset(void)
+{
+#ifdef FLEX_SCANNER
+	if (YY_CURRENT_BUFFER)
+		yy_flush_buffer(YY_CURRENT_BUFFER);
+#endif
+}

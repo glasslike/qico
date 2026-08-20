@@ -29,6 +29,7 @@ extern char yytext[];
 #endif
 extern char *yyPTR;
 extern int yylex();
+extern void flaglex_reset(void);
 static int logic(int e1,int op,int e2);
 static int checkflag(void);
 static int checkconnstr(void);
@@ -153,33 +154,34 @@ static int checkflag(void)
 	}
 #endif
 	if(!rnode)return 0;
+	/* Return plain 0/1 (not raw option bitmasks) so OR/AND/XOR stay boolean. */
  	if(!strncasecmp(yytext,"list",4)) {
-		DEBUG(('Y',3,"checkflag: listed: %d",rnode->options&O_LST));
-		return rnode->options&O_LST;
+		DEBUG(('Y',3,"checkflag: listed: %d",!!(rnode->options&O_LST)));
+		return !!(rnode->options&O_LST);
 	}
 	if(!strncasecmp(yytext,"prot",4)) {
-		DEBUG(('Y',3,"checkflag: protected: %d",rnode->options&O_PWD));
-		return rnode->options&O_PWD;
+		DEBUG(('Y',3,"checkflag: protected: %d",!!(rnode->options&O_PWD)));
+		return !!(rnode->options&O_PWD);
 	}
 	if(!strncasecmp(yytext,"in",2)) {
-		DEBUG(('Y',3,"checkflag: inbound: %d",rnode->options&O_INB));
-		return rnode->options&O_INB;
+		DEBUG(('Y',3,"checkflag: inbound: %d",!!(rnode->options&O_INB)));
+		return !!(rnode->options&O_INB);
 	}
 	if(!strncasecmp(yytext,"out",3)) {
 		DEBUG(('Y',3,"checkflag: outbound: %d",!(rnode->options&O_INB)));
 		return !(rnode->options&O_INB);
 	}
 	if(!strncasecmp(yytext,"tcp",3)) {
-		DEBUG(('Y',3,"checkflag: tcp/ip: %d",rnode->options&O_TCP));
-		return rnode->options&O_TCP;
+		DEBUG(('Y',3,"checkflag: tcp/ip: %d",!!(rnode->options&O_TCP)));
+		return !!(rnode->options&O_TCP);
 	}
 	if(!strncasecmp(yytext,"binkp",5)) {
-		DEBUG(('Y',3,"checkflag: binkp: %d",bink));
-		return bink;
+		DEBUG(('Y',3,"checkflag: binkp: %d",!!bink));
+		return !!bink;
 	}
 	if(!strncasecmp(yytext,"bad",3)) {
-		DEBUG(('Y',3,"checkflag: bad password: %d",rnode->options&O_BAD));
-		return rnode->options&O_BAD;
+		DEBUG(('Y',3,"checkflag: bad password: %d",!!(rnode->options&O_BAD)));
+		return !!(rnode->options&O_BAD);
 	}
 	if(rnode->flags) {
 		char *r;
@@ -334,6 +336,8 @@ int flagexp(slist_t *expr, int strict)
 	for(;expr;expr=expr->next) {
 		DEBUG(('Y',1,"checkexpression: \"%s\"",expr->str));
 		p=xstrdup(expr->str);
+		/* Flush flex EOF from the previous parse, then point at this string. */
+		flaglex_reset();
 		yyPTR=p;
 		flxpres=0;
 		if(yyparse()) {

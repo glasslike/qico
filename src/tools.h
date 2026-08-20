@@ -148,7 +148,8 @@ void		stopit(int);
 /* daemon.c */
 void	daemon_mode(void);
 
-/* flagexp.y */
+/* flagexp.y / flaglex.l */
 int	flagexp(slist_t *, int);
+void	flaglex_reset(void);
 
 #endif
