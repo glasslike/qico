@@ -19,6 +19,12 @@ are unchanged from upstream.
 ```bash
 sudo apt-get install -y build-essential autoconf automake libtool pkg-config \
   flex bison libncurses-dev libperl-dev
+
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/glasslike/qico.git
+cd qico
+
 ./autogen.sh
 ./configure --prefix=/usr/local --enable-binkp
 make -j"$(nproc)"
