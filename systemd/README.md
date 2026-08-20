@@ -1,4 +1,4 @@
-# Running qico under systemd (production: user `map`, node 2:203/910)
+# Running qico under systemd
 
 Unit files in this directory are for Debian / Raspberry Pi OS (`systemd`).
 
@@ -8,7 +8,6 @@ Unit files in this directory are for Debian / Raspberry Pi OS (`systemd`).
 | `qico.service` | Outbound queue / originate (`qico -f`) |
 | `qico-binkp.socket` | Listen TCP **24554** |
 | `qico-binkp@.service` | Per-connection answer (`qico -abinkp`) — do not enable directly |
-| `qico.service.d/lab-user.conf` | Lab VM only (`User=osboxes`) — **not** for production |
 
 Paths baked into the units:
 
@@ -28,7 +27,6 @@ sudo cp systemd/qico.target \
         systemd/qico-binkp.socket \
         systemd/qico-binkp@.service \
         /etc/systemd/system/
-# Do NOT install lab-user.conf on production
 sudo systemctl daemon-reload
 sudo systemctl enable --now qico.target
 ```
