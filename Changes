@@ -1,3 +1,14 @@
+Version 0.59.2-rpe (Rabarber Pie Edition)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Fork baseline freeze before shared-AKA work (planned 0.61.0).
+Based on kosfango/qico 0.59.1 plus:
+- Debian 12 / modern toolchain: -fcommon, Perl/ncurses via LDADD, 64-bit MD5.
+- aarch64 fix: qcc/qctl getopt uses int (unsigned char broke option parsing).
+- flagexp/flex: reset lexer between if-expression parses so `if protected`
+  selects secure inbound correctly.
+- systemd: qico.target + BinkP socket activation (originate + answer).
+
+
 Version 0.59.1
 ~~~~~~~~~~~~~~
 - Correct ';' to ':' in the src/outbound.c file.

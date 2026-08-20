@@ -1,7 +1,8 @@
 # Debian 12 / modern toolchain notes
 
-This fork of [kosfango/qico](https://github.com/kosfango/qico) (qico 0.59.1)
-includes build and BinkP fixes validated on Debian 12 (bookworm).
+This fork of [kosfango/qico](https://github.com/kosfango/qico) is released as
+**qico 0.59.2-rpe** (Rabarber Pie Edition) and includes build and BinkP fixes
+validated on Debian 12 (bookworm) and Raspberry Pi OS (aarch64).
 
 ## Changes vs upstream `master`
 
