@@ -24,6 +24,15 @@ make -j"$(nproc)"
 sudo make install
 ```
 
+## Extended 'configure' could include specific paths definition and perl enable:
+```bash
+./configure --prefix=/home/map/ftn/usr \
+  --bindir=/home/map/ftn/usr/bin \
+  --sbindir=/home/map/ftn/usr/bin \
+  --sysconfdir=/home/map/ftn/usr/etc/qico \
+  --enable-binkp --enable-perl
+```
+
 Binaries: `qico` (sbin), `qcc` / `qctl` (bin).
 
 ## qcc
