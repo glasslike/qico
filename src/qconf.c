@@ -93,6 +93,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"nodelist",C_STRL,3,NULL,NULL},
 	{"nodial",C_PATH,0,NULL,NULL},
 	{"osname",C_STR,0,NULL,NULL},
+	{"osnametemplate",C_STR,0,NULL,NULL},
 	{"password",C_ADRSTRL,0,NULL,NULL},
 	{"perlfile",C_PATH,2,NULL,NULL},
 	{"phone",C_STR,0,NULL,""},

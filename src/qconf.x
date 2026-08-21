@@ -93,6 +93,7 @@ nlpath,C_PATH,3,NULL
 nodelist,C_STRL,3,NULL
 nodial,C_PATH,0,NULL
 osname,C_STR,0,NULL
+osnametemplate,C_STR,0,NULL
 password,C_ADRSTRL,0,NULL
 perlfile,C_PATH,2,NULL
 phone,C_STR,0,""

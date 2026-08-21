@@ -647,6 +647,88 @@ void setproctitle(char *str)
 #endif
 
 
+/*
+ * Saved uname() pieces for osname. NULL until osname_set_uname_fields()
+ * runs; osname then stays at the compile-time "Unix" fallback.
+ */
+static char *osname_sysname;
+static char *osname_release;
+static char *osname_machine;
+
+/* True once osname points at a heap copy rather than the "Unix" literal. */
+static int osname_on_heap;
+
+
+/*
+ * Replace the global osname with a heap copy of s. The initial "Unix"
+ * string is a static literal and must not be freed.
+ */
+static void osname_replace(const char *s)
+{
+	if ( osname_on_heap )
+		xfree( osname );
+	osname = xstrdup( s );
+	osname_on_heap = 1;
+}
+
+
+void osname_compose(int want_sysname, int want_release, int want_machine)
+{
+	char tmp[ MAX_STRING + 1 ];
+
+	if ( !osname_sysname )
+		return;
+
+	tmp[0] = 0;
+
+	/*
+	 * All three flags reproduce the historical snprintf() exactly:
+	 * "%s-%s (%s)" -> sysname-release (machine).
+	 */
+	if ( want_sysname && want_release && want_machine ) {
+		snprintf( tmp, MAX_STRING, "%s-%s (%s)",
+			osname_sysname, osname_release, osname_machine );
+		osname_replace( tmp );
+		return;
+	}
+
+	if ( want_sysname && osname_sysname[0] )
+		xstrcpy( tmp, osname_sysname, MAX_STRING );
+
+	if ( want_release && osname_release[0] ) {
+		if ( tmp[0] )
+			xstrcat( tmp, "-", MAX_STRING );
+		xstrcat( tmp, osname_release, MAX_STRING );
+	}
+
+	if ( want_machine && osname_machine[0] ) {
+		if ( tmp[0] ) {
+			xstrcat( tmp, " (", MAX_STRING );
+			xstrcat( tmp, osname_machine, MAX_STRING );
+			xstrcat( tmp, ")", MAX_STRING );
+		} else
+			xstrcpy( tmp, osname_machine, MAX_STRING );
+	}
+
+	if ( tmp[0] )
+		osname_replace( tmp );
+}
+
+
+void osname_set_uname_fields(const char *sysname, const char *release, const char *machine)
+{
+	xfree( osname_sysname );
+	xfree( osname_release );
+	xfree( osname_machine );
+	osname_sysname = xstrdup( sysname ? sysname : "" );
+	osname_release = xstrdup( release ? release : "" );
+	osname_machine = xstrdup( machine ? machine : "" );
+
+	/* Default ident is unchanged until osnametemplate is applied. */
+	osname_compose( 1, 1, 1 );
+}
+
+
 void u_vers(const char *progn)
 {
 	struct utsname uts;

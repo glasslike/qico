@@ -466,6 +466,11 @@ flags		qico team
 ;progname	qico
 ;version	2000
 ;osname		Windows95
+# Which uname() fields go into the auto-detected OS ident (the global
+# osname). Token order does not matter. Default is all three, producing
+# sysname-release (machine), e.g. Linux-6.1.0-18-amd64 (x86_64).
+;osnametemplate	sysname release machine
+;osnametemplate	sysname
 
 # client/server port. default is 60178.
 # can be use number or service from /etc/services. (nonif)
