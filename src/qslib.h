@@ -45,6 +45,21 @@ extern	char version[];
 extern	char cvsdate[];
 extern	char *osname;
 
+/*
+ * Store uname() fields used to build the global osname, then compose
+ * the original sysname-release (machine) string. Called from getsysinfo()
+ * before the config is read.
+ */
+void	osname_set_uname_fields(const char *sysname, const char *release, const char *machine);
+
+/*
+ * Rebuild osname from the saved uname() fields. Each flag enables one
+ * piece of the original formula; omitted pieces are dropped without
+ * leaving a dangling hyphen or empty parentheses. No-op if uname()
+ * never succeeded.
+ */
+void	osname_compose(int want_sysname, int want_release, int want_machine);
+
 extern	char *hexdigitslower;
 extern	char *hexdigitsupper;
 extern	char *hexdigitsall;

@@ -196,16 +196,19 @@ RETSIGTYPE sigerr(int sig)
 }
 
 
+/*
+ * Fill the global osname from uname(). The config is not loaded yet, so
+ * this always uses the original sysname-release (machine) formula.
+ * rereadconfig() may rebuild osname later from osnametemplate.
+ */
 static void getsysinfo(void)
 {
     struct utsname uts;
-    char tmp[ MAX_STRING + 1 ];
 
     if ( uname( &uts ))
         return;
 
-    snprintf( tmp, MAX_STRING, "%s-%s (%s)", uts.sysname, uts.release, uts.machine );
-    osname = xstrdup( tmp );
+    osname_set_uname_fields( uts.sysname, uts.release, uts.machine );
 }
 
 

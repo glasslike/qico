@@ -35,6 +35,61 @@ static slist_t		*condlist = NULL, *curcond;
 #define IS_COMMENT( t ) ( *t == ';' || *t == '#' || ( *t== '/' && t[1] == '/' ))
 
 
+/*
+ * Rebuild the global osname after the config is loaded. osnametemplate is
+ * a set of uname() field names (sysname, release, machine); token order
+ * does not matter. Unknown tokens are logged and ignored. An empty or
+ * missing keyword restores the original three-field formula. Consumers
+ * of osname are not touched; only the variable itself is rewritten.
+ */
+static void apply_osnametemplate(void)
+{
+	char	buf[ MAX_STRING + 1 ];
+	char	*p, *tok;
+	const char *tmpl;
+	int	want_sysname = 0, want_release = 0, want_machine = 0;
+	int	saw_token = 0;
+
+	tmpl = cfgs( CFG_OSNAMETEMPLATE );
+	if ( !tmpl || !*tmpl ) {
+		osname_compose( 1, 1, 1 );
+		return;
+	}
+
+	xstrcpy( buf, tmpl, MAX_STRING );
+	p = buf;
+	while ( *p ) {
+		p = skip_blanks( p );
+		if ( !*p )
+			break;
+		tok = p;
+		while ( *p && !isspace( (unsigned char) *p ))
+			p++;
+		if ( *p )
+			*p++ = 0;
+
+		saw_token = 1;
+		if ( !strcasecmp( tok, "sysname" ))
+			want_sysname = 1;
+		else if ( !strcasecmp( tok, "release" ))
+			want_release = 1;
+		else if ( !strcasecmp( tok, "machine" ))
+			want_machine = 1;
+		else
+			write_log( "unknown osnametemplate token '%s'", tok );
+	}
+
+	if ( !want_sysname && !want_release && !want_machine ) {
+		if ( saw_token )
+			write_log( "osnametemplate has no valid fields, using sysname-release (machine)" );
+		osname_compose( 1, 1, 1 );
+		return;
+	}
+
+	osname_compose( want_sysname, want_release, want_machine );
+}
+
+
 static int getstr(char **to, const char *from)
 {
 	*to = xstrdup( from );
@@ -535,6 +590,8 @@ void rereadconfig(int client)
         write_log( "can't open master log '%s', aborting.", ccs );
         exit( S_FAILURE );
     }
+
+    apply_osnametemplate();
 
     if ( outbound_init( cfgs( CFG_ASOOUTBOUND ), cfgs( CFG_BSOOUTBOUND ),
         cfgs( CFG_QSTOUTBOUND ), cfgal( CFG_ADDRESS )->addr.z ) == 0 ) {
