@@ -277,6 +277,9 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
 		if ( parseftnaddr( s, &fa, NULL, 0 ) && !falist_find( dat->addrs, &fa ))
 			falist_add( &dat->addrs, &fa );
 
+	/* binkd-compatible shared-AKA adjustment of remote EMSI AKAs */
+	share_remote_falist( &dat->addrs );
+
 	EMSI_TOK( &t, p ) /* Password */
 	if ( *p )
 		restrcpy( &dat->pwd, p );

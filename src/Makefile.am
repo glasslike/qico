@@ -8,7 +8,7 @@ noinst_HEADERS = binkp.h charset.h clserv.h crc.h cvsdate.h defs.h \
 	ftn.h globals.h have.h headers.h hydra.h \
 	janus.h ls_zmodem.h \
 	mailer.h md5q.h modem.h nodelist.h \
-	qcconst.h replace.h slists.h tcp.h timer.h tty.h types.h \
+	qcconst.h replace.h share.h slists.h tcp.h timer.h tty.h types.h \
 	qconf.x qconf.h qipc.h qslib.h tools.h
 
 EXTRA_DIST = x2c.awk
@@ -18,7 +18,7 @@ qico_SOURCES = call.c clserv.c config.c crc.c daemon.c \
 	emsi.c freq.c ftn.c globals.c hydra.c janus.c log.c \
 	ls_zglue.c ls_zmodem.c ls_zreceive.c ls_zsend.c main.c md5q.c \
 	modem.c nodelist.c outbound.c protfm.c qconf.c qipc.c \
-	queue.c qslib.c session.c slists.c tcp.c tools.c tty.c \
+	queue.c qslib.c session.c share.c slists.c tcp.c tools.c tty.c \
 	flagexp.y flaglex.l
 
 EXTRA_qico_SOURCES = binkp.c perl.c

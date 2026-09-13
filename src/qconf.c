@@ -119,6 +119,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"sendonly",C_YESNO,0,NULL,"no"},
 	{"server",C_STR,2,NULL,NULL},
 	{"serverpwd",C_STR,0,NULL,NULL},
+	{"share",C_ADRSTRL,0,NULL,NULL},
 	{"showintro",C_YESNO,0,NULL,"yes"},
 	{"showpkt",C_YESNO,0,NULL,"no"},
 	{"socks",C_STR,0,NULL,NULL},

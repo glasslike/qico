@@ -204,6 +204,9 @@ void q_each(const char *fname, const ftnaddr_t *fa, int type, int flavor, int rs
 	q->canpoll |= ( cflav && canpoll && (f & Q_CANPOLL));
 	q->flv |= f;
 	DEBUG(('Q',4,"q_each: canpoll %d, q->canpoll %d, q->flv 0x%X(0x%X)",canpoll,q->canpoll,q->flv,f));
+
+	/* binkd-style share fan-out: mail for a shared AKA also marks members */
+	share_fanout( fname, fa, type, flavor, rslow, q_each );
 }
 
 

@@ -119,6 +119,7 @@ runonemsi,C_STR,0,NULL
 sendonly,C_YESNO,0,"no"
 server,C_STR,2,NULL
 serverpwd,C_STR,0,NULL
+share,C_ADRSTRL,0,NULL
 showintro,C_YESNO,0,"yes"
 showpkt,C_YESNO,0,"no"
 socks,C_STR,0,NULL

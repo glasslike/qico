@@ -148,6 +148,12 @@ domain		fidonet.org
 # include passwords file
 include		$(conf)/qico.passwd
 
+# Shared AKA (binkd-compatible): tosser packs netmail to the shared address;
+# qico fans that mail out to each member (queue/poll), and on a session with
+# a member rewrites .pkt destination/password to that link.
+# Example: share 2:999/999 2:203/0 2:292/854
+;share		2:999/999 2:203/0 2:292/854
+
 ###############################################################################
 ### paths and filenames #######################################################
 ###############################################################################

@@ -111,5 +111,6 @@
 #include "qconf.h"
 #include "qipc.h"
 #include "timer.h"
+#include "share.h"
 
 #endif /* __HEADERS_H */

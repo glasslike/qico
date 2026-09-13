@@ -287,11 +287,16 @@ int rxclose(FILE **f, int what)
 	return what;
 }
 
+/* Temp path of a share-rewritten pkt opened by txopen(); cleared in txclose(). */
+static char *share_tx_tmp = NULL;
+
 FILE *txopen(char *tosend, char *sendas)
 {
 	FILE *f;
 	struct stat sb;
 	int prevcps = (sendf.start&&(time(NULL)-sendf.start>2))?sendf.cps:effbaud/10;
+	char *tmp = NULL;
+	int rewritten = 0;
 
 	if ( !tosend )
 	    return NULL;
@@ -311,6 +316,33 @@ FILE *txopen(char *tosend, char *sendas)
 	sendf.nf++;if(sendf.nf>sendf.allf) sendf.allf++;
 	IFPerl({char *p=perl_on_send(tosend);if(p&&!*p)return NULL;
 		if(p){xfree(sendf.fname);sendf.fname=xstrdup(p);}});
+
+	/*
+	 * Shared-AKA rewrite: open a temp copy with dest/password changed to
+	 * the session peer. The original pkt stays on disk until flexecute()
+	 * deletes it after a successful send (same idea as binkd in-memory rewrite).
+	 */
+	if ( whattype( sendas ) == IS_PKT ) {
+		f = share_open_rewritten_pkt( tosend, &tmp, &rewritten );
+		if ( rewritten ) {
+			if ( !f ) {
+				xfree( tmp );
+				write_log( "share: rewrite failed for %s, not sending unrewritten pkt",
+					tosend );
+				return NULL;
+			}
+			xfree( share_tx_tmp );
+			share_tx_tmp = tmp;
+			if(cfgi(CFG_ESTIMATEDTIME)) {
+				write_log("start send: %s, %lu bytes, estimated time %s",
+					sendf.fname, (long) sendf.ftot,
+					estimatedtime(sendf.ftot,prevcps,effbaud));
+			}
+			return f;
+		}
+		xfree( tmp );
+	}
+
 	f=fopen(tosend, "rb");
 	if(!f) {
 		write_log("can't open file %s for reading: %s", tosend,strerror(errno));
@@ -347,6 +379,12 @@ int txclose(FILE **f, int what)
 	sendf.foff=0;sendf.ftot=0;
 	sendf.start=0;
 	fclose(*f);*f=NULL;
+
+	/* Drop share rewrite temp; original is handled by flexecute(). */
+	if ( share_tx_tmp ) {
+		lunlink( share_tx_tmp );
+		xfree( share_tx_tmp );
+	}
 	return what;
 }
 

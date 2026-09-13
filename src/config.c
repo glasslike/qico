@@ -601,6 +601,7 @@ void rereadconfig(int client)
     }
 
     psubsts = parsesubsts( cfgfasl( CFG_SUBST ));
+    share_init();
 
 #ifdef NEED_DEBUG
     parse_log_levels();
@@ -618,6 +619,7 @@ void killconfig(void)
 {
     int i;
     cfgitem_t *c,*t;
+    share_done();
     slist_kill(&condlist);
     for(i=0;i<CFG_NNN;i++) {
         for(c=configtab[i].items;c;c=t) {

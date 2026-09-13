@@ -489,17 +489,24 @@ static int M_adr(BPS *bp, byte *arg)
 {
 	char		*buf = skip_blanks((char *) arg );
 	char		*rem_aka, *rem_pwd = NULL;
+	char		*adr_owned = NULL;
 	FTNADDR_T	( fa );
 	falist_t	*our_addrs = cfgal( CFG_ADDRESS );
 	int		rc = 0;
     
 	DEBUG(('B',3,"ADR: %s", buf));
 
+	/* binkd-compatible shared-AKA adjustment of remote ADR */
+	adr_owned = share_adr_adjust( buf );
+	buf = adr_owned;
+
 	falist_kill( &rnode->addrs );
 	totalm = totalf = 0;
 
 	while(( rem_aka = strsep( &buf, " " ))) {
 		DEBUG(('B',4,"parsing: %s", rem_aka));
+		if ( !*rem_aka )
+			continue;
 		if ( parseftnaddr( rem_aka, &fa, NULL, 0 )) {
 			if ( has_addr( &fa, our_addrs )) {
 				falist_add( &rnode->addrs, &fa );
@@ -507,6 +514,7 @@ static int M_adr(BPS *bp, byte *arg)
 				write_log( "Remote has our aka %s", ftnaddrtoa( &fa ));
 				msgs( BPM_ERR, "Sorry, you have one of my akas");
 				bp->rc = S_FAILURE;
+				xfree( adr_owned );
 				return 0;
 			}
 
@@ -538,9 +546,12 @@ static int M_adr(BPS *bp, byte *arg)
 			write_log( "Remote sent bad address %s", rem_aka );
 			msgs( BPM_ERR, "Bad address %s", rem_aka );
 			bp->rc = S_FAILURE;
+			xfree( adr_owned );
 			return 0;
 		}
 	}
+
+	xfree( adr_owned );
 
 	if ( rc == 0 ) {
 		log_rinfo( rnode );
