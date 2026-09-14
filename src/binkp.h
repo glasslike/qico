@@ -42,7 +42,11 @@
 
 
 
-/* messages */
+/* BinkP M_ command ids. Anonymous enum on purpose: `enum { ... } bp_msg;`
+ * used to define a dummy global in every TU that includes this header
+ * (binkp.c, protfm.c, session.c). That fails to link under GCC 10+
+ * -fno-common. We still pass -fcommon for other legacy commons; this
+ * just stops adding one. Constants BPM_* are unchanged. */
 enum {
     BPM_NONE = 99,		/* No available data */
     BPM_DATA = 98,		/* Binary data */
@@ -61,7 +65,7 @@ enum {
     BPM_CHAT,			/* For chat */
     BPM_MIN = BPM_NUL,		/* Minimal message type value */
     BPM_MAX = BPM_CHAT		/* Maximal message type value */
-} bp_msg;
+};
 
 
 typedef struct _BP_MSG BPMSG;

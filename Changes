@@ -6,6 +6,11 @@ Unreleased
 - binkplisted: optional nodelist listed-check on BinkP sessions
   (default no). When yes, uses needalllisted like EMSI so `if listed`,
   FREQ listed status and /LST in the options log work on BinkP too.
+- emsi: parse/emit the 4-digit EMSI_DAT length and CRC as unsigned, not
+  size_t. On LP64, sscanf("%X") into size_t left the high half garbage
+  and rejected valid frames with Bad EMSI_DAT length/CRC.
+- binkp.h: drop the unused `bp_msg` global from the M_ command enum
+  (GCC 10+ -fno-common). -fcommon stays for other legacy commons.
 
 
 Version 0.60.0

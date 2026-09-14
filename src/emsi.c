@@ -235,7 +235,12 @@ static void emsi_log(int inout, const char *dat)
 static int emsi_parsedat(char *str, ninfo_t *dat)
 {
 	char		*p, *t, *s, *lcod, *ccod;
-	size_t		l, l1;
+	/* Wire fields are 4 hex digits (16-bit). Do not sscanf them into
+	 * size_t: on LP64 %X writes 4 bytes and leaves the high half
+	 * uninitialized, so length/CRC checks fail at random. */
+	unsigned	len_hex = 0, crc_hex = 0;
+	size_t		body_len;
+	UINT16		crc_got;
 	FTNADDR_T	(fa);
 
 	emsi_log( EMSI_LOG_IN, str );
@@ -245,21 +250,27 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
 		return 0;
 	}
 
-	sscanf( str + 10, "%04X", (unsigned *) &l );
-	if ( l != ( l1 = strlen( str ) - 18 )) {
-		write_log( "Bad EMSI_DAT length: %u, should be: %u!", l, l1 );
+	/* **EMSI_DAT<len4>{EMSI}...body...<crc4>; len counts bytes after the
+	 * 14-byte header up to but not including the CRC. */
+	sscanf( str + 10, "%4X", &len_hex );
+	body_len = strlen( str ) - 18;
+	if ( len_hex != body_len ) {
+		write_log( "Bad EMSI_DAT length: %u, should be: %lu!",
+			len_hex, (unsigned long) body_len );
 		return 0; /* Bad EMSI length */
 	}
 	
-	DEBUG(('E',5,"EMSI_DAT length (%d) is OK!", l ));
+	DEBUG(('E',5,"EMSI_DAT length (%u) is OK!", len_hex ));
 
-	sscanf( str + strlen( str ) - 4, "%04X", &l);
-	if ( l != ( l1 = crc16usd( (UINT8 *) str + 2, strlen( str ) - 6 ))) {
-		write_log( "Bad EMSI_DAT CRC: %04X, should be: %04X!", l, l1 );
+	sscanf( str + strlen( str ) - 4, "%4X", &crc_hex );
+	crc_got = crc16usd( (UINT8 *) str + 2, strlen( str ) - 6 );
+	if ( crc_hex != crc_got ) {
+		write_log( "Bad EMSI_DAT CRC: %04X, should be: %04X!",
+			crc_hex, (unsigned) crc_got );
 		return 0; /* Bad EMSI CRC */
 	}
 
-	DEBUG(('E',5,"EMSI_DAT CRC (%04X) is OK!", l ));
+	DEBUG(('E',5,"EMSI_DAT CRC (%04X) is OK!", crc_hex ));
 
 	if ( strncmp( str + 14, "{EMSI}", 6)) {
 		write_log( "No EMSI fingerprint!" );
@@ -561,8 +572,8 @@ void emsi_makedat(ftnaddr_t *remaddr, unsigned long mail, unsigned long files,
 	xfree( p );
 	EMSI_CAT( "}" );
 
-	/* Calculate emsi length */
-	snprintf( tmp, TMP_LEN, "%04X", strlen( emsi_dat ) - 14 );
+	/* Length is four hex digits; cast size_t so %04X matches unsigned. */
+	snprintf( tmp, TMP_LEN, "%04X", (unsigned)( strlen( emsi_dat ) - 14 ));
 	memcpy( emsi_dat + 10, tmp, 4 );
 
 	/* EMSI crc16 */
