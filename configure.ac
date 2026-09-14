@@ -626,6 +626,39 @@ AC_SUBST(PERLCFLAGS)
 AC_SUBST(PERLLDFLAGS)
 AC_SUBST(PERL_O)
 
+dnl Source ident for qico -v and the EMSI banner (the "[date]" in
+dnl "qico vX.Y [YYYY-MM-DD HH:MM]"). This is the git commit time, not
+dnl the compiler's __DATE__: two builds of the same tree must print the
+dnl same string. UTC so Windows and a Pi do not disagree about the clock.
+dnl
+dnl Order: git metadata when $srcdir is a checkout; else src/source-date
+dnl (written into "make dist" tarballs); else "unknown" (GitHub zip, etc.).
+AC_MSG_CHECKING([source date stamp])
+QICO_SOURCE_DATE=unknown
+if test -d "$srcdir/.git" || test -f "$srcdir/.git"; then
+	if (cd "$srcdir" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
+		_qico_date=`cd "$srcdir" && TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M' 2>/dev/null`
+		if test -n "$_qico_date"; then
+			QICO_SOURCE_DATE="$_qico_date"
+		fi
+		unset _qico_date
+	fi
+fi
+if test "$QICO_SOURCE_DATE" = unknown && test -f "$srcdir/src/source-date"; then
+	QICO_SOURCE_DATE=`tr -d '\r\n' < "$srcdir/src/source-date"`
+	if test -z "$QICO_SOURCE_DATE"; then
+		QICO_SOURCE_DATE=unknown
+	fi
+fi
+dnl Quotes or backslashes would break the C string in config.h.
+case "$QICO_SOURCE_DATE" in
+	*[\"\\]*) QICO_SOURCE_DATE=unknown ;;
+esac
+AC_MSG_RESULT([$QICO_SOURCE_DATE])
+AC_DEFINE_UNQUOTED([QICO_SOURCE_DATE], ["$QICO_SOURCE_DATE"],
+	[UTC git-commit (or dist) stamp printed by qico -v and in EMSI banners])
+AC_SUBST([QICO_SOURCE_DATE])
+
 
 dnl add warn flags in maintainer mode
 dnl -fcommon: required for GCC 10+ / Debian 12+ where -fno-common is the

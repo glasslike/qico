@@ -17,6 +17,14 @@ EXTRA_DIST = FAQ Changes autogen.sh \
 	debian/qico-common.init		debian/services \
 	debian/qico-common.install
 
+# Bake the configure-time git stamp into the tarball so a git-less
+# extract still gets a real date instead of "unknown". Not a srcdir file;
+# only appears inside $(distdir).
+dist-hook:
+	if test "$(QICO_SOURCE_DATE)" != unknown && test -n "$(QICO_SOURCE_DATE)"; then \
+		echo "$(QICO_SOURCE_DATE)" > "$(distdir)/src/source-date"; \
+	fi
+
 distclean-hook:
 	-rm -rf $(top_builddir)/autom4te.cache
 

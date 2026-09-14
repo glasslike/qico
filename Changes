@@ -11,6 +11,10 @@ Unreleased
   and rejected valid frames with Bad EMSI_DAT length/CRC.
 - binkp.h: drop the unused `bp_msg` global from the M_ command enum
   (GCC 10+ -fno-common). -fcommon stays for other legacy commons.
+- version: qico -v / EMSI banner date is the UTC git commit time from
+  ./configure, not the frozen CVS leftover 2013-02-23 in cvsdate.h.
+  Tarballs from make dist keep the stamp in src/source-date; trees
+  without git print [unknown].
 
 
 Version 0.60.0

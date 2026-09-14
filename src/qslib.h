@@ -42,6 +42,7 @@
 
 extern	char progname[];
 extern	char version[];
+/* UTC source stamp from ./configure (git commit date, or make dist fallback). */
 extern	char cvsdate[];
 extern	char *osname;
 

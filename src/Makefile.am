@@ -4,7 +4,7 @@ sbin_PROGRAMS = qico
 bin_PROGRAMS = qctl @QCC@
 EXTRA_PROGRAMS = qcc
 
-noinst_HEADERS = binkp.h charset.h clserv.h crc.h cvsdate.h defs.h \
+noinst_HEADERS = binkp.h charset.h clserv.h crc.h defs.h \
 	ftn.h globals.h have.h headers.h hydra.h \
 	janus.h ls_zmodem.h \
 	mailer.h md5q.h modem.h nodelist.h \

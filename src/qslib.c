@@ -36,7 +36,6 @@
 
 #include "headers.h"
 #include <sys/utsname.h>
-#include "cvsdate.h"
 
 #ifdef DEBUG
 #  undef DEBUG
@@ -47,6 +46,17 @@
 
 char *osname = "Unix";
 char version[] = PACKAGE_VERSION;
+
+/* Ident in qico -v and the EMSI banner brackets. QICO_SOURCE_DATE is the
+ * UTC git-commit stamp baked by ./configure (see configure.ac), not
+ * __DATE__. The symbol is still called cvsdate because emsi.c and u_vers()
+ * already print that name; the old CVS-updated header is gone.
+ * Fallback "unknown" if this tree was built from a config.h without the
+ * define (configure not re-run after the stamp landed). */
+#ifndef QICO_SOURCE_DATE
+#define QICO_SOURCE_DATE "unknown"
+#endif
+char cvsdate[] = QICO_SOURCE_DATE;
 
 char *hexdigitslower = "0123456789abcdef";
 char *hexdigitsupper = "0123456789ABCDEF";
