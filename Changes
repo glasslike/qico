@@ -4,6 +4,9 @@ Version 0.60.0
   Config: share <shared-aka> <member1> [member2 ...]
   Fan-out queue/poll to members, ADR/EMSI remote-aka adjustment, and
   rewrite of uncompressed .pkt dest/password to the session peer on send.
+- nodelist: if qnode.idx is missing, compile it on query the same way
+  as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
+  a corrupt index, inbound listed-check, and qico -n are unchanged.
 
 
 Version 0.59.2-rpe (Rabarber Pie Edition)

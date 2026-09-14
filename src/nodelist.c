@@ -202,8 +202,23 @@ static int ndl_open(void)
 	xstrcat( ndlpath, ndl_idx, MAX_PATH );
 
 	idx = fopen( ndlpath, "rb" );
-	if ( !idx )
+	if ( !idx ) {
+		/*
+		 * qnode.idx is only a cache of the required nodelist files.
+		 * If it does not exist yet (ENOENT), reuse the same
+		 * NDL_ENEEDCOMPILE path nodelist_query() already uses for a
+		 * stale index — so the daemon compiles once and callers keep
+		 * their existing success/failure behaviour.
+		 *
+		 * Any other fopen() errno (EACCES, ENOTDIR, …) still maps to
+		 * NDL_EOPENINDEX and the historic "Can't open nodelist index"
+		 * log line. Do not treat those as "need compile": compiling
+		 * cannot fix permissions or a broken nlpath.
+		 */
+		if ( errno == ENOENT )
+			return -(NDL_ENEEDCOMPILE);
 		return -(NDL_EOPENINDEX);		/* Can't open nodelist index */
+	}
 
 	if ( fread( &idx_header, sizeof( idxh_t ), 1, idx ) != 1 ) {
 		fclose( idx );
