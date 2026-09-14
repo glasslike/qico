@@ -539,6 +539,12 @@ protorder	HJDZ1C
 # T - Chat enable
 binkpopt	MRBCT
 
+# Apply nodelist `listed' check on BinkP sessions (default no).
+# EMSI always does this; BinkP historically did not. When yes, O_LST is
+# set using needalllisted, so `if listed', FREQ listed status and /LST
+# in the options log work the same as on EMSI.
+;binkplisted	yes
+
 # HTTP(S) proxy.
 # format: proxy host[:port] [login [password]]
 ;proxy		proxy.foobar.com:3128 mylogin mycoolpwd

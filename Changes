@@ -3,6 +3,9 @@ Unreleased
 - nodelist: if qnode.idx is missing, compile it on query the same way
   as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
   a corrupt index, inbound listed-check, and qico -n are unchanged.
+- binkplisted: optional nodelist listed-check on BinkP sessions
+  (default no). When yes, uses needalllisted like EMSI so `if listed`,
+  FREQ listed status and /LST in the options log work on BinkP too.
 
 
 Version 0.60.0

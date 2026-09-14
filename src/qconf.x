@@ -12,6 +12,7 @@ autohold,C_STRL,0,NULL
 autoskip,C_STRL,0,NULL
 autosuspend,C_STRL,0,NULL
 autoticskip,C_YESNO,0,"no"
+binkplisted,C_YESNO,0,"no"
 binkpopt,C_STR,0,"MB"
 bsooutbound,C_PATH,2,NULL
 callonflavors,C_STR,0,"NDCI"

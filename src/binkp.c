@@ -71,6 +71,7 @@
 #include "tcp.h"
 #include "crc.h"
 #include "md5q.h"
+#include "nodelist.h"
 
 
 #define CRYPT(_x_) ( _x_->opt_cr == O_YES ? " (crypted)" : "" )
@@ -622,6 +623,20 @@ static int binkp_hsdone(BPS *bp)
 		restrcpy( &rnode->phone, "-Unpublished-" );
 	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
+
+	/*
+	 * EMSI always runs nodelist_listed() and may set O_LST. BinkP never
+	 * did, so `if listed', FREQ listed-status and the "/LST" bit in the
+	 * options log stayed off. binkplisted (default no) keeps that
+	 * historic behaviour; when yes, reuse the same check and
+	 * needalllisted policy as EMSI, after ADR/PWD so rnode->addrs is
+	 * complete. A missing index still means "not listed" (listed() does
+	 * not compile).
+	 */
+	if ( cfgi( CFG_BINKPLISTED )
+		&& nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+		rnode->options |= O_LST;
+
 	if (( bp->opt_cr & O_WE ) && ( bp->opt_cr & O_THEY )) {
 		unsigned long *keys;
 
