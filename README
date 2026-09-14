@@ -171,6 +171,18 @@ current:
       git clone git://git.code.sf.net/p/qico/git qico-git
 
 
+Versioning
+~~~~~~~~~~
+Git tags (v0.60.0, …) are releases. A build from a tag reports that
+version with no suffix.
+
+master is unreleased: the version string is the next likely number
+plus -dev (currently 0.60.1-dev). That number is not a promise; the
+next tag may skip it (for example 0.61.0). Pending notes live in
+Changes under Unreleased until a release commit moves them into a
+Version x.y.z block and drops -dev.
+
+
 Authors
 ~~~~~~~
 Pavel Kurnosoff, 2:5030/736.25, pqr@yasp.com, icq 45906870 (up to 0.45pl3.1)
