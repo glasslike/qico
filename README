@@ -140,35 +140,6 @@ Notes
    local name, they must adjust so that the files in the prescribed loshka
    mailer could not open, and the remaining conversion can already be configured as
    you want to remota received files.
-   
-Download
-~~~~~~~~
-
-stable:
-<<<<<<< HEAD
-<<<<<<< HEAD
- web: http://www.sf.net/projects/qico -> files -> qico-0.58
-=======
- web: http://www.sf.net/projects/qico -> files -> qico-0.59
->>>>>>> develop
-=======
- web: http://www.sf.net/projects/qico -> files -> qico-0.58
->>>>>>> cb2afc55bcb22d8bf0dc093ac3260d6bd337baaf
- git: https://sourceforge.net/p/qico/git
-      git clone git://git.code.sf.net/p/qico/git qico-git
-
-current:
-<<<<<<< HEAD
-<<<<<<< HEAD
- web: http://www.sf.net/projects/qico -> files -> qico-0.58
-=======
- web: http://www.sf.net/projects/qico -> files -> qico-0.59
->>>>>>> develop
-=======
- web: http://www.sf.net/projects/qico -> files -> qico-0.58
->>>>>>> cb2afc55bcb22d8bf0dc093ac3260d6bd337baaf
- git: https://sourceforge.net/p/qico/git
-      git clone git://git.code.sf.net/p/qico/git qico-git
 
 
 Versioning
