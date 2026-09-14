@@ -1,7 +1,5 @@
-Version 0.60.1 (unreleased)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Not in tag v0.60.0. AC_INIT is still 0.60.0 until this is released.
-
+Unreleased
+~~~~~~~~~~
 - nodelist: if qnode.idx is missing, compile it on query the same way
   as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
   a corrupt index, inbound listed-check, and qico -n are unchanged.
