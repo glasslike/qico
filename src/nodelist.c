@@ -119,6 +119,7 @@ static int checktxy(const char *flags);
 static int parsetime(const char *tstr, int *day, int *hour, int *min);
 static subst_t *findsubst(const ftnaddr_t *fa, subst_t *subs);
 static void nlfree(ninfo_t *nl);
+static void ndl_apply_inet_flags(ninfo_t *nl, const ftnaddr_t *addr, int proto_mask);
 
 
 static int comp_addrie(const void *a, const void *b)
@@ -522,6 +523,359 @@ static int ndl_read_entry(size_t index, char *ndl_str)
 
 typedef enum { NDL_STATUS, NDL_ADDR, NDL_SYSNAME, NDL_LOCATION, NDL_SYSOP, NDL_PHONE, NDL_SPEED, NDL_FLAGS } ndl_field_t;
 
+
+/*
+ * True if s is a non-empty decimal port number (FTS-5001 Ixx:port form).
+ */
+static int ndl_all_digits(const char *s)
+{
+	if ( !s || !*s )
+		return 0;
+	for( ; *s; s++ )
+		if ( !isdigit( (unsigned char) *s ))
+			return 0;
+	return 1;
+}
+
+
+/*
+ * Duplicate the first n bytes of s. Returns NULL if n is 0.
+ */
+static char *ndl_dup_len(const char *s, size_t n)
+{
+	char *d;
+
+	if ( !s || n == 0 )
+		return NULL;
+	d = xmalloc( n + 1 );
+	memcpy( d, s, n );
+	d[n] = '\0';
+	return d;
+}
+
+
+/*
+ * Split an FTS-5001 flag argument (the part after IBN:/INA:/IFC:) into
+ * host and optional port. First assignment wins so later duplicate flags
+ * do not override an earlier explicit host.
+ *
+ * Recognised forms:
+ *   (empty)          — capability only
+ *   24555            — port only (host comes from INA or DNS; 24554 is BinkP default)
+ *   host             — hostname or dotted IPv4
+ *   host:port
+ *   :port            — same as port-only
+ *   [ipv6] / [ipv6]:port
+ */
+static void ndl_split_host_port(const char *arg, char **host, char **port)
+{
+	const char	*colon, *end;
+
+	if ( !arg || !*arg || !host || !port )
+		return;
+
+	if ( ndl_all_digits( arg )) {
+		if ( !*port )
+			*port = xstrdup( arg );
+		return;
+	}
+
+	if ( arg[0] == '[' ) {
+		end = strchr( arg, ']' );
+		if ( end && end > arg + 1 ) {
+			if ( !*host )
+				*host = ndl_dup_len( arg + 1, (size_t)( end - arg - 1 ));
+			if ( end[1] == ':' && end[2] && !*port )
+				*port = xstrdup( end + 2 );
+			return;
+		}
+	}
+
+	if ( arg[0] == ':' && ndl_all_digits( arg + 1 )) {
+		if ( !*port )
+			*port = xstrdup( arg + 1 );
+		return;
+	}
+
+	{
+		int		colons = 0;
+		const char	*q;
+
+		for( q = arg; *q; q++ )
+			if ( *q == ':' )
+				colons++;
+		if ( colons > 1 ) {
+			/* Raw IPv6 literal; port only exists in [addr]:port form */
+			if ( !*host )
+				*host = xstrdup( arg );
+			return;
+		}
+	}
+
+	colon = strrchr( arg, ':' );
+	if ( colon && colon > arg && ndl_all_digits( colon + 1 )) {
+		/* hostname:port or ipv4:port — not a raw IPv6 literal */
+		if ( !*host )
+			*host = ndl_dup_len( arg, (size_t)( colon - arg ));
+		if ( !*port )
+			*port = xstrdup( colon + 1 );
+		return;
+	}
+
+	if ( !*host )
+		*host = xstrdup( arg );
+}
+
+
+#define NDL_BINKP_PORT		"24554"
+#define NDL_IFCICO_PORT		"60179"
+
+
+/*
+ * Historic nodelist encoding of an IPv4 address in the phone field:
+ * 000-A-B-C-D → A.B.C.D (used when IBN is set but INA is absent).
+ */
+static char *ndl_phone_ipv4(const char *phone)
+{
+	int	a, b, c, d;
+	char	buf[64];
+
+	if ( !phone )
+		return NULL;
+	if ( sscanf( phone, "000-%d-%d-%d-%d", &a, &b, &c, &d ) == 4
+		&& a >= 1 && a <= 255 && b >= 0 && b <= 255
+		&& c >= 0 && c <= 255 && d >= 0 && d <= 255 )
+	{
+		snprintf( buf, sizeof( buf ), "%d.%d.%d.%d", a, b, c, d );
+		return xstrdup( buf );
+	}
+	return NULL;
+}
+
+
+/*
+ * Join host and optional port for tcp_connect(). The protocol default
+ * (BinkP 24554 / ifcico 60179) is omitted so tcp_connect() uses its own
+ * default — IBN:24555 in the nodelist is a *non*-default port and is kept.
+ * IPv6 literals with a port are wrapped as [addr]:port.
+ */
+static char *ndl_format_host(const char *host, const char *port, const char *defport)
+{
+	char	buf[MAX_STRING + 1];
+	int	ipv6;
+
+	if ( !host || !*host )
+		return NULL;
+	if ( !port || !*port || ( defport && strcmp( port, defport ) == 0 ))
+		return xstrdup( host );
+
+	ipv6 = ( strchr( host, ':' ) != NULL );
+	if ( ipv6 )
+		snprintf( buf, sizeof( buf ), "[%s]:%s", host, port );
+	else
+		snprintf( buf, sizeof( buf ), "%s:%s", host, port );
+	return xstrdup( buf );
+}
+
+
+/*
+ * True if flag token `p' is `name' or `name:...' (case-insensitive).
+ * Rejects accidental prefixes such as IBNX.
+ */
+static int ndl_flag_is(const char *p, const char *name)
+{
+	size_t n;
+
+	if ( !p || !name )
+		return 0;
+	n = strlen( name );
+	if ( strncasecmp( p, name, n ) != 0 )
+		return 0;
+	return ( p[n] == '\0' || p[n] == ':' );
+}
+
+
+static const char *ndl_flag_arg(const char *p, const char *name)
+{
+	size_t n = strlen( name );
+
+	if ( p[n] == ':' )
+		return p + n + 1;
+	return "";
+}
+
+
+/*
+ * Same charset as can_dial(): a phone the Hayes path can send as ATD.
+ * "-Unpublished-" and other text fail; 1-555-1234 succeeds.
+ */
+static int ndl_phone_is_modem(const char *phone)
+{
+	const char	*p;
+	int		bad = 0;
+
+	if ( !phone || !*phone )
+		return 0;
+	for( p = phone; *p; p++ )
+		if ( !strchr( "0123456789*#TtPpRr,.\"Ww@!-", *p ))
+			bad++;
+	return bad == 0;
+}
+
+
+/*
+ * Fill ninfo_t.host / opt from nodelist internet flags (FTS-5001 / FSC-1058).
+ *
+ * Host, from a real Z2DAILY line e.g.
+ *   INA:ftsc.bnbbbs.net,IBN:24555,IFC
+ *   → host ftsc.bnbbbs.net:24555 (BinkP; 24555 is not the 24554 default)
+ *   INA:siliconu.com,IBN
+ *   → host siliconu.com (tcp_connect uses 24554)
+ *   INA:mbsedev.bnbbbs.net,IBN:24556,IFC:60279
+ *   → BinkP mbsedev.bnbbbs.net:24556; subst ifc → :60279
+ *
+ * Resolution order (binkd nodelist.pl + IRD):
+ *   1. IBN:host or IFC:host
+ *   2. INA:host + IBN/IFC port if that port is not the protocol default
+ *   3. phone 000-A-B-C-D as IPv4
+ *   4. DNS fN.nN.zZ.<IRD or cfg rootdomain>
+ *
+ * proto_mask 0: auto — IBN beats IFC when both are listed; set both opt
+ * bits so subst can still pick ifcico. Non-zero: rebuild for that protocol
+ * only (subst `ifc` must not keep a BinkP :24555 baked into host).
+ *
+ * Auto mode does not steal analog calls: a listed (non-Pvt) node with a
+ * Hayes-dialable phone keeps host empty, so the daemon still dials the
+ * modem. INA/IBN are used when there is no usable phone (unpublished),
+ * for Pvt+IBN (historic IP path), or when subst asks for binkp/ifc.
+ */
+static void ndl_apply_inet_flags(ninfo_t *nl, const ftnaddr_t *addr, int proto_mask)
+{
+	char	*flags, *tok, *rest;
+	char	*ina_host = NULL, *ina_port = NULL;
+	char	*ibn_host = NULL, *ibn_port = NULL;
+	char	*ifc_host = NULL, *ifc_port = NULL;
+	char	*ird = NULL;
+	char	*chosen = NULL, *port = NULL, *phone_ip = NULL;
+	const char *defport = NULL;
+	int	has_ibn = 0, has_ifc = 0;
+	int	want_binkp = 0;
+
+	if ( !nl || !nl->flags || !*nl->flags ) {
+		if ( proto_mask && addr ) {
+			char dns[MAX_STRING + 1];
+			xfree( nl->host );
+			ftnaddr_inet_host( dns, sizeof( dns ), addr, NULL );
+			nl->host = xstrdup( dns );
+		}
+		return;
+	}
+
+	flags = rest = xstrdup( nl->flags );
+	while(( tok = strsep( &rest, "," ))) {
+		if ( !*tok )
+			continue;
+		if ( ndl_flag_is( tok, "INA" ))
+			ndl_split_host_port( ndl_flag_arg( tok, "INA" ),
+				&ina_host, &ina_port );
+#ifdef WITH_BINKP
+		else if ( ndl_flag_is( tok, "IBN" )) {
+			has_ibn = 1;
+			ndl_split_host_port( ndl_flag_arg( tok, "IBN" ),
+				&ibn_host, &ibn_port );
+		}
+#endif
+		else if ( ndl_flag_is( tok, "IFC" )) {
+			has_ifc = 1;
+			ndl_split_host_port( ndl_flag_arg( tok, "IFC" ),
+				&ifc_host, &ifc_port );
+		} else if ( ndl_flag_is( tok, "IRD" )) {
+			const char *arg = ndl_flag_arg( tok, "IRD" );
+			if ( *arg && !ird )
+				ird = xstrdup( arg );
+		}
+	}
+	xfree( flags );
+
+	if ( proto_mask ) {
+#ifdef WITH_BINKP
+		want_binkp = ( proto_mask & MO_BINKP ) != 0;
+#else
+		want_binkp = 0;
+#endif
+	} else {
+		if ( !has_ibn && !has_ifc ) {
+			xfree( ina_host ); xfree( ina_port );
+			xfree( ibn_host ); xfree( ibn_port );
+			xfree( ifc_host ); xfree( ifc_port );
+			xfree( ird );
+			return;
+		}
+		/*
+		 * Daemon chooses IP iff rnode->host is set. Leave host empty
+		 * when the analog path can still ATD this number, so a listed
+		 * node like Texxar (phone + IBN,INA) keeps modem behaviour.
+		 * subst binkp/ifc comes through proto_mask and still uses INA.
+		 */
+		if ( nl->type != NT_PVT && ndl_phone_is_modem( nl->phone )) {
+			char *enc_ip = ndl_phone_ipv4( nl->phone );
+			if ( !enc_ip ) {
+				DEBUG(('N',3,"ndl_apply_inet_flags: keep modem phone '%s'",
+					nl->phone ));
+				xfree( ina_host ); xfree( ina_port );
+				xfree( ibn_host ); xfree( ibn_port );
+				xfree( ifc_host ); xfree( ifc_port );
+				xfree( ird );
+				return;
+			}
+			xfree( enc_ip );
+		}
+#ifdef WITH_BINKP
+		if ( has_ibn )
+			nl->opt |= MO_BINKP;
+#endif
+		if ( has_ifc )
+			nl->opt |= MO_IFC;
+		want_binkp = has_ibn;
+	}
+
+	if ( want_binkp ) {
+		chosen = ibn_host ? ibn_host : ina_host;
+		port = ibn_port ? ibn_port : ina_port;
+		defport = NDL_BINKP_PORT;
+	} else {
+		chosen = ifc_host ? ifc_host : ina_host;
+		port = ifc_port ? ifc_port : ina_port;
+		defport = NDL_IFCICO_PORT;
+	}
+
+	if ( !chosen ) {
+		phone_ip = ndl_phone_ipv4( nl->phone );
+		chosen = phone_ip;
+	}
+
+	if ( !chosen && addr ) {
+		char dns[MAX_STRING + 1];
+		ftnaddr_inet_host( dns, sizeof( dns ), addr, ird );
+		chosen = xstrdup( dns );
+		DEBUG(('N',3,"ndl_apply_inet_flags: DNS fallback '%s'", chosen));
+	} else if ( chosen )
+		DEBUG(('N',3,"ndl_apply_inet_flags: host '%s' port '%s' def '%s'",
+			chosen, SS( port ), SS( defport )));
+
+	xfree( nl->host );
+	nl->host = ndl_format_host( chosen, port, defport );
+
+	if ( chosen != ibn_host && chosen != ifc_host && chosen != ina_host
+		&& chosen != phone_ip )
+		xfree( chosen );
+	xfree( ina_host ); xfree( ina_port );
+	xfree( ibn_host ); xfree( ibn_port );
+	xfree( ifc_host ); xfree( ifc_port );
+	xfree( ird );
+	xfree( phone_ip );
+}
+
 /*
  * Query FTN address addr info from nodelist. Returns 1 on success or -(NDL_EXXX)
  * on failure.
@@ -598,15 +952,12 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 
 		case NDL_FLAGS:
 		default:
-			if ( nlent->type == NT_PVT ) {
-#ifdef WITH_BINKP
-				if ( strstr( p, "IBN" ))
-					nlent->opt |= MO_BINKP;
-#endif
-				if ( strstr( p, "IFC" ))
-					nlent->opt |= MO_IFC;
-			}
-
+			/*
+			 * Internet flags (IBN/IFC/INA/IRD) are parsed from
+			 * the whole flags string after the loop so INA: can
+			 * sit before or after IBN:. Here we only pick CM/Txy
+			 * as the work-time window.
+			 */
 			if (( p[0] == 'T' && strlen( p ) == 3 )
 				|| ( strcmp( p, "CM" ) == 0 ))
 			{
@@ -616,8 +967,7 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 		field++;
 	}
 
-	if ( nlent->opt )
-		nlent->host = xstrdup( ftnaddrtoia( addr ));
+	ndl_apply_inet_flags( nlent, addr, 0 );
 
 	*nl = nlent;
 	falist_add( &nlent->addrs, addr );
@@ -1402,8 +1752,16 @@ subst_t *parsesubsts(faslist_t *sbs)
 					else
 						ndl_log( "unknown subst flag: '%s'", t );
 
-					if ( d->flags ) {
-						d->host = xstrdup( d->phone ? d->phone : ftnaddrtoia( &sbs->addr ));
+					/*
+					 * IP subst: an explicit phone/host token
+					 * becomes the hostname. '-' was skipped
+					 * above, so d->phone is NULL and the
+					 * host is filled later from nodelist
+					 * (INA/IBN) or DNS — same order as
+					 * binkd (node line → nodelist → *).
+					 */
+					if ( d->flags && d->phone ) {
+						d->host = xstrdup( d->phone );
 						xfree( d->phone );
 						DEBUG(('N',3,"parsesubst: host '%s'", d->host ));
 					}
@@ -1461,6 +1819,22 @@ int applysubst(ninfo_t *nl, subst_t *subs)
 	nl->hidnum = ( sb->nhids > 1 ) ? d->num : 0;
 	nl->opt &= ~(MO_BINKP|MO_IFC);
 	nl->opt |= d->flags;
+
+	/*
+	 * Host priority (binkd-compatible):
+	 *   subst host           → already copied
+	 *   subst '-' + binkp/ifc → rebuild from nodelist for THAT protocol
+	 *                            (ifc must not inherit IBN:24555)
+	 *   modem subst           → drop IP host, keep phone
+	 */
+	if ( nl->opt & (MO_BINKP|MO_IFC) ) {
+		if ( !d->host ) {
+			xfree( nl->host );
+			ndl_apply_inet_flags( nl, &nl->addrs->addr, nl->opt );
+		}
+	} else
+		xfree( nl->host );
+
 	if ( from_nl )
 		nlkill( &from_nl );
 	return 1;

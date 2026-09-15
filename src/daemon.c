@@ -642,13 +642,13 @@ void daemon_mode()
 					rnode->name=xstrdup("Unknown");
 					rnode->phone=xstrdup("");
 				}
-				if(!(rnode->opt&(MO_BINKP|MO_IFC)))xfree(rnode->host);
 				DEBUG(('Q',1,"ndl: %s %s %s [%d]",ftnaddrtoa(&current->addr),rnode?(rnode->host?rnode->host:rnode->phone):"$",rnode->wtime?rnode->wtime:"$",rnode->hidnum));
 				if(!cfgi(CFG_TRANSLATESUBST))phonetrans(&rnode->phone,cfgsl(CFG_PHONETR));
 				if ( checktimegaps( cfgs( CFG_CANCALL ))
 				    && find_dialable_subst( rnode, havestatus( f, CFG_IMMONFLAVORS ), psubsts )
 				    && !outbound_addr_busy( &current->addr )) {
 
+					if(!(rnode->opt&(MO_BINKP|MO_IFC)))xfree(rnode->host);
 					xfree(rnode->tty);
 					if(rnode->host) {
 						static struct stat s;

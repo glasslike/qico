@@ -412,32 +412,52 @@ tcp_connect_socks(char *name)
 static int
 tcp_connect(char *name, char *proxy, int sp)
 {
-	char			*portname, *p;
+	char			*portname = NULL, *p, *host, *br, *c;
+	int			colons = 0;
 	struct addrinfo		hints =	      { .ai_family = PF_UNSPEC,
 						.ai_socktype = SOCK_STREAM,
 						.ai_protocol = IPPROTO_TCP };
 	struct addrinfo		*ai, *aiHead;
 	int			aiErr;
 
-	if (( portname = strchr( proxy ? proxy : name, ':' ))) {
-		*portname++ = '\0';
-		if (( p = strchr( portname, ' ' )))
-			*p = '\0';
+	/*
+	 * Split host:port the same way as binkd get_host_and_port():
+	 *   hostname:port / dotted-quad:port
+	 *   [ipv6]:port
+	 *   raw IPv6 (more than one colon, no brackets) — no port
+	 * Mutates the chosen string in place, as the old strchr() split did.
+	 */
+	host = proxy ? proxy : name;
+	if ( host[0] == '[' && ( br = strchr( host, ']' ))) {
+		*br = '\0';
+		host++;
+		if ( br[1] == ':' )
+			portname = br + 2;
 	} else {
-		portname = (proxy ? ( sp ? "socks" : "proxy" ) :
-                    ( bink ? "binkp" : "fido" ) );
+		for( c = host; *c; c++ )
+			if ( *c == ':' )
+				colons++;
+		if ( colons == 1 ) {
+			portname = strchr( host, ':' );
+			*portname++ = '\0';
+		}
 	}
+	if ( portname && ( p = strchr( portname, ' ' )))
+		*p = '\0';
+	if ( !portname || !*portname )
+		portname = ( proxy ? ( sp ? "socks" : "proxy" ) :
+			( bink ? "binkp" : "fido" ) );
 
-	aiErr = getaddrinfo( proxy ? proxy : name, portname, &hints, &aiHead);
+	aiErr = getaddrinfo( host, portname, &hints, &aiHead);
 	if ( aiErr == EAI_SERVICE ) {
 		hints.ai_flags |= AI_NUMERICSERV;
-		aiErr = getaddrinfo( proxy ? proxy : name, GET_PORT(), &hints, &aiHead);
+		aiErr = getaddrinfo( host, GET_PORT(), &hints, &aiHead);
 	}
 
 	if ( aiErr != 0 ) {
 		write_log("can't resolve ip for %s%s: %s",
 			proxy ? ( sp ? "socks " : "proxy " ) : "",
-			proxy ? proxy : name, gai_strerror(aiErr) );
+			host, gai_strerror(aiErr) );
 
 		return -1;
 	}

@@ -30,8 +30,7 @@
 #include <fnmatch.h>
 #include "crc.h"
 
-/* domain name to translate ftn address to inet host. */
-#define FTNDOMAIN "binkp.net"
+/* Internet DNS suffix used when cfg `rootdomain' is empty or unset. */
 
 
 void addr_cpy(ftnaddr_t *a, const ftnaddr_t *b)
@@ -168,11 +167,42 @@ char *ftnaddrtoda(const ftnaddr_t *a)
 	return s;
 }
 
+/*
+ * Build the binkp.net-style FQDN for an FTN address:
+ *   2:5020/123     -> f123.n5020.z2.<root>
+ *   2:5020/123.4   -> p4.f123.n5020.z2.<root>
+ *
+ * `root' overrides the suffix (nodelist IRD:). NULL uses cfg `rootdomain',
+ * which is binkd's `root-domain' — change it if the global DNS zone moves.
+ */
+void ftnaddr_inet_host(char *buf, size_t buflen, const ftnaddr_t *a, const char *root)
+{
+	const char *dom = root;
+
+	if ( !buf || buflen == 0 )
+		return;
+	buf[0] = '\0';
+	if ( !a )
+		return;
+
+	if ( !dom || !*dom ) {
+		dom = cfgs( CFG_ROOTDOMAIN );
+		if ( !dom || !*dom )
+			dom = FTN_ROOTDOMAIN_DEFAULT;
+	}
+
+	if ( a->p )
+		snprintf( buf, buflen, "p%d.f%d.n%d.z%d.%s",
+			a->p, a->f, a->n, a->z, dom );
+	else
+		snprintf( buf, buflen, "f%d.n%d.z%d.%s",
+			a->f, a->n, a->z, dom );
+}
+
 char *ftnaddrtoia(const ftnaddr_t *a)
 {
-	static char s[64];
-	if(a->p)snprintf(s,64,"p%d.f%d.n%d.z%d." FTNDOMAIN,a->p,a->f,a->n,a->z);
-	    else snprintf(s,64,"f%d.n%d.z%d." FTNDOMAIN,a->f,a->n,a->z);
+	static char s[MAX_STRING + 1];
+	ftnaddr_inet_host( s, sizeof( s ), a, NULL );
 	return s;
 }
 

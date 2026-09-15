@@ -4,6 +4,14 @@ Unreleased
   Config: share <shared-aka> <member1> [member2 ...]
   Fan-out queue/poll to members, ADR/EMSI remote-aka adjustment, and
   rewrite of uncompressed .pkt dest/password to the session peer on send.
+- nodelist: parse FTS-5001 internet flags (INA, IBN, IFC, IRD) when
+  querying a node. IP host order matches binkd: subst host, else
+  nodelist INA/IBN:/IFC:, else DNS fN.nN.zZ.<rootdomain>. `subst ... -`
+  with binkp/ifc no longer jumps straight to DNS. Listed IBN/IFC nodes
+  without a Hayes-dialable phone (unpublished / Pvt) are callable via
+  IP without a subst; a listed node that still has a real phone keeps
+  the analog path unless subst asks for binkp/ifc. `rootdomain`
+  (default binkp.net) is binkd's `root-domain`.
 - nodelist: if qnode.idx is missing, compile it on query the same way
   as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
   a corrupt index, inbound listed-check, and qico -n are unchanged.

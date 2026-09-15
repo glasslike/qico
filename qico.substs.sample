@@ -7,16 +7,24 @@
 #	binkp - can Binkp calls to node,
 #	ifc - can ifcico calls to node.
 # on ip calls field <phone> must contain ip-addr, or host of node, or
-# '-' for translate ftn-addr to [p.]f.n.z.fidonet.net.
+# '-' to take the host from the nodelist (INA:/IBN:/IFC:, FTS-5001),
+# then DNS fN.nN.zN.<rootdomain> (default binkp.net).
+#
+# Host priority for IP calls (same as binkd):
+#   1. subst host (this line)
+#   2. nodelist INA / IBN:host / IFC:host
+#   3. DNS *.binkp.net (or `rootdomain' / nodelist IRD:)
 #
 # ex:
 #
 ;subst	1:2345/123	-			23:30-8:00	ifc
-# addr: 1:2345/123, host: f123.n2345.z1.fidonet.net, prot: ifcico.
+# addr: 1:2345/123, host: from nodelist or f123.n2345.z1.binkp.net, prot: ifcico.
 ;subst	1:2345/546	123-4567		-		-
 # addr: 1:2345/546, phone: 123-4567, prot: emsi via modem.
 ;subst	1:2345/666	fido.foobar.com		CM 		binkp
 # addr: 1:2345/666, host: fido.foobar.com, prot: binkp; main line.
+;subst	1:2345/666	-			CM		binkp
+# addr: 1:2345/666, host: nodelist INA/IBN or DNS; prot: binkp.
 ;subst	1:2345/666	-			-
 # addr: 1:2345/666, phone: from nodelist, prot: emsi via modem; hidden line.
 #

@@ -31,6 +31,8 @@
 #ifndef __FTN_H__
 #define __FTN_H__
 
+#include <stddef.h>
+
 #define F_ERR  0
 #define F_NORM 1
 #define F_HOLD 2
@@ -167,6 +169,9 @@ ftnaddr_t	*akamatch(const ftnaddr_t *, falist_t *);
 char	*ftnaddrtoa(const ftnaddr_t *);
 char	*ftnaddrtoda(const ftnaddr_t *);
 char	*ftnaddrtoia(const ftnaddr_t *);
+/* Default DNS suffix for fN.nN.zZ.<root> (binkd root-domain / FTS-5001 IRD). */
+#define FTN_ROOTDOMAIN_DEFAULT	"binkp.net"
+void	ftnaddr_inet_host(char *, size_t, const ftnaddr_t *, const char *);
 char	*strip8(char *);
 int	has_addr(const ftnaddr_t *, falist_t *);
 int	showpkt(const char *);

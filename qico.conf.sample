@@ -148,8 +148,13 @@ $conf		/etc/ftn
 ;address	1:2345/7845
 ;address 	111:222/44@leftnet
 
-# default domain name
+# default FTN domain for 5D addresses (not the internet DNS suffix)
 domain		fidonet.org
+
+# Internet DNS suffix for fN.nN.zZ.<root> when there is no INA/IBN host
+# (same as binkd `root-domain'). Optional: if omitted, qico uses binkp.net
+# — the suffix already compiled in. Set it only if that zone ever moves.
+;rootdomain	binkp.net
 
 # include passwords file
 include		$(conf)/qico.passwd
@@ -232,6 +237,8 @@ nlpath		$(spool)/nl
 
 # Node- and point lists. zone can be specified if omitted in list.
 # The lists order is important: specify most actual list first.
+# IP calls read FTS-5001 flags from the list (INA, IBN, IFC, IRD);
+# see `rootdomain' and qico.substs.sample for host priority.
 #
 # (required)(nonif)
 ;nodelist	$(spool)/files/NET5030.999 2

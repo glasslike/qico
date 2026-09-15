@@ -148,31 +148,6 @@ int force_call(ftnaddr_t *fa, int line, int flags)
     }
 
     rnode->tty = NULL;
-    ports = cfgsl( CFG_PORT );
-
-    if (( flags & FC_ANY ) != FC_ANY ) {
-        do {
-            if ( !ports )
-                return S_FAILURE;
-
-            port = tty_findport( ports, cfgs( CFG_NODIAL ));
-            if ( !port )
-                return S_FAILURE;
-            if ( rnode->tty )
-                xfree( rnode->tty );
-
-            rnode->tty = xstrdup( baseport( port ));
-            ports = ports->next;
-        } while( !checktimegaps( cfgs( CFG_CANCALL )));
-
-        if ( !checktimegaps( cfgs( CFG_CANCALL )))
-            return S_FAILURE;
-    } else {
-        if (( port = tty_findport( ports, cfgs( CFG_NODIAL )))) {
-            rnode->tty = xstrdup( baseport( port ));
-        } else
-            return S_FAILURE;
-    }
 
     if ( !cfgi( CFG_TRANSLATESUBST ))
         phonetrans( &rnode->phone, cfgsl( CFG_PHONETR ));
@@ -201,6 +176,71 @@ int force_call(ftnaddr_t *fa, int line, int flags)
 
     if ( cfgi( CFG_TRANSLATESUBST ))
         phonetrans( &rnode->phone, cfgsl( CFG_PHONETR ));
+
+    if ( !( rnode->opt & ( MO_BINKP | MO_IFC )))
+        xfree( rnode->host );
+
+    if ( rnode->host && *rnode->host ) {
+        /*
+         * IP call from subst / nodelist INA / DNS. Same CANCALL gate as
+         * the modem path, unless the user forced FC_ANY.
+         */
+        struct stat s;
+        char lckname[MAX_PATH];
+
+        if (( flags & FC_ANY ) != FC_ANY && !checktimegaps( cfgs( CFG_CANCALL )))
+            return S_FAILURE;
+
+        snprintf( lckname, MAX_PATH, "%s.tcpip", cfgs( CFG_NODIAL ));
+        if ( !stat( lckname, &s ))
+            return S_NODIAL;
+
+        is_ip = 1;
+        if ( rnode->opt & MO_BINKP )
+            bink = 1;
+        xstrcpy( ip_id, "ipline", 10 );
+        rnode->tty = xstrdup( bink ? "binkp" : "tcpip" );
+
+        if( !log_init( cfgs( CFG_LOG ), rnode->tty )) {
+            write_log( "can't open log %s", ccs );
+            return S_FAILURE;
+        }
+
+        if( rnode->hidnum )
+            write_log( "calling %s #%d, %s (%s)",
+                rnode->name, rnode->hidnum, ftnaddrtoa( fa ), rnode->host );
+        else
+            write_log( "calling %s, %s (%s)",
+                rnode->name, ftnaddrtoa( fa ), rnode->host );
+
+        return do_call( fa, rnode->host, NULL );
+    }
+
+    ports = cfgsl( CFG_PORT );
+
+    if (( flags & FC_ANY ) != FC_ANY ) {
+        do {
+            if ( !ports )
+                return S_FAILURE;
+
+            port = tty_findport( ports, cfgs( CFG_NODIAL ));
+            if ( !port )
+                return S_FAILURE;
+            if ( rnode->tty )
+                xfree( rnode->tty );
+
+            rnode->tty = xstrdup( baseport( port ));
+            ports = ports->next;
+        } while( !checktimegaps( cfgs( CFG_CANCALL )));
+
+        if ( !checktimegaps( cfgs( CFG_CANCALL )))
+            return S_FAILURE;
+    } else {
+        if (( port = tty_findport( ports, cfgs( CFG_NODIAL )))) {
+            rnode->tty = xstrdup( baseport( port ));
+        } else
+            return S_FAILURE;
+    }
 
     if( !log_init( cfgs( CFG_LOG ), rnode->tty )) {
         write_log( "can't open log %s", ccs );

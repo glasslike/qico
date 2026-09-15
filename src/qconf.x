@@ -120,6 +120,7 @@ remotecp,C_PATH,0,"none"
 rescanperiod,C_INT,0,"300"
 resolvehostname,C_YESNO,0,"no"
 rmboxes,C_YESNO,0,"no"
+rootdomain,C_STR,0,"binkp.net"
 rootdir,C_PATH,2,NULL
 runoncall,C_STR,0,NULL
 runonchat,C_STR,0,NULL

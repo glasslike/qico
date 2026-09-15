@@ -113,6 +113,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"rescanperiod",C_INT,0,NULL,"300"},
 	{"resolvehostname",C_YESNO,0,NULL,"no"},
 	{"rmboxes",C_YESNO,0,NULL,"no"},
+	{"rootdomain",C_STR,0,NULL,"binkp.net"},
 	{"rootdir",C_PATH,2,NULL,NULL},
 	{"runoncall",C_STR,0,NULL,NULL},
 	{"runonchat",C_STR,0,NULL,NULL},
