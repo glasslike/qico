@@ -12,10 +12,6 @@ Unreleased
   IP without a subst; a listed node that still has a real phone keeps
   the analog path unless subst asks for binkp/ifc. `rootdomain`
   (default binkp.net) is binkd's `root-domain`.
-- nodelist: IBN without a hostname plus INA:host (FTS-5001 shorthand,
-  e.g. 2:5015/46 `IBN,INA:f46n5015z2.ddns.net` or `INA:…,IBN`) uses
-  the INA host. Flag order does not matter; each comma-separated
-  token is `NAME` or `NAME:arg`.
 - nodelist: if qnode.idx is missing, compile it on query the same way
   as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
   a corrupt index, inbound listed-check, and qico -n are unchanged.
