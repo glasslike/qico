@@ -99,9 +99,14 @@ static int getstr(char **to, const char *from)
 
 static int getpath(char **to, const char *from)
 {
-	if ( strcspn( from, "*[]?<>|" ) != strlen( from ))
+	size_t n;
+
+	if ( !from || !*from )
 		return 0;
-	if ( from[strlen( from ) - 1] == '/' )
+	n = strlen( from );
+	if ( strcspn( from, "*[]?<>|" ) != n )
+		return 0;
+	if ( from[n - 1] == '/' )
 		chop( (char *) from, 1 );
 	*to = xstrdup( from );
 	return 1;
@@ -218,6 +223,8 @@ int cfgi(int i)
 		if ( !ci->condition )
 			cn = ci;
 	}
+	if ( !cn )
+		return cci = 0;
 	return cci = cn->value.v_int;
 }
 
@@ -232,6 +239,8 @@ char *cfgs(int i)
 		if ( !ci->condition )
 			cn = ci;
 	}
+	if ( !cn )
+		return ccs = NULL;
 	return ccs = cn->value.v_char;
 }
 
@@ -246,6 +255,8 @@ slist_t *cfgsl(int i)
 		if ( !ci->condition )
 			cn = ci;
 	}
+	if ( !cn )
+		return ccsl = NULL;
 	return ccsl = cn->value.v_sl;
 }
 
@@ -260,6 +271,8 @@ faslist_t *cfgfasl(int i)
 		if ( !ci->condition )
 			cn = ci;
 	}
+	if ( !cn )
+		return ccfasl = NULL;
 	return ccfasl = cn->value.v_fasl;
 }
 
@@ -274,6 +287,8 @@ falist_t *cfgal(int i)
 		if ( !ci->condition )
 			cn = ci;
 	}
+	if ( !cn )
+		return ccal = NULL;
 	return ccal = cn->value.v_al;
 }
 
@@ -295,7 +310,7 @@ static int parsekeyword(const char *kw, const char *arg, const char *cfgname, in
 		return 0;
 	}
 
-        if ( curcond && ( configtab[i].flags & 2 )) {
+        if ( curcond && ( configtab[i].flags & CFG_F_NOIF )) {
 		write_log( "%s:%d: keyword '%s' can't be defined inside if-expression",
 			cfgname, line, kw );
 		return 0;
@@ -319,11 +334,11 @@ static int parsekeyword(const char *kw, const char *arg, const char *cfgname, in
         }
 
 	if ( setvalue( ci, arg, configtab[i]. type )) {
-		if ( !( configtab[i].flags & 8 )) {
+		if ( !( configtab[i].flags & CFG_F_SEEN )) {
 			if ( !curcond )
-				configtab[i].flags |= 8;
+				configtab[i].flags |= CFG_F_SEEN;
 			else
-				configtab[i].flags |= 4;
+				configtab[i].flags |= CFG_F_SEEN_IF;
 		}
 	} else {
 		xfree( ci );
@@ -532,6 +547,65 @@ contd:
 }
 
 
+/*
+ * Unconditional item for a keyword (the fallback when no if-expression
+ * matches). NULL if the table has only conditional entries.
+ */
+static cfgitem_t *cfg_uncond_item(int i)
+{
+	cfgitem_t *ci, *cn = NULL;
+
+	for ( ci = configtab[i].items; ci; ci = ci->next )
+		if ( !ci->condition )
+			cn = ci;
+	return cn;
+}
+
+
+/*
+ * Required keywords must have a real value, not just an empty default
+ * slot. Address with flags&SEEN but a NULL list is the classic
+ * cfgal()->addr crash; empty inbound/log paths blow up later in snprintf.
+ */
+static int required_value_ok(int i)
+{
+	cfgitem_t *cn = cfg_uncond_item( i );
+
+	if ( !cn )
+		return 0;
+	switch ( configtab[i].type ) {
+	case C_ADDRL:
+		return cn->value.v_al != NULL;
+	case C_PATH:
+	case C_STR:
+		return cn->value.v_char && cn->value.v_char[0];
+	case C_STRL:
+		return cn->value.v_sl != NULL;
+	default:
+		return 1;
+	}
+}
+
+
+/*
+ * True if any item of a C_STRL keyword (conditional or not) has a
+ * non-empty string. Used for `port' and the Hayes reply lists: an
+ * empty `port' line is not a configured modem, and a present-but-blank
+ * modemconnect never matches CONNECT.
+ */
+static int keyword_slist_has_text(int i)
+{
+	cfgitem_t	*ci;
+	slist_t		*s;
+
+	for ( ci = configtab[i].items; ci; ci = ci->next )
+		for ( s = ci->value.v_sl; s; s = s->next )
+			if ( s->str && s->str[0] )
+				return 1;
+	return 0;
+}
+
+
 int readconfig(const char *cfgname)
 {
 	int		rc, i;
@@ -547,8 +621,8 @@ int readconfig(const char *cfgname)
     }
     if(!rc)return 0;
     for(i=0;i<CFG_NNN;i++)
-        if(!(configtab[i].flags&8)) {
-        if(configtab[i].flags&1) {
+        if(!(configtab[i].flags&CFG_F_SEEN)) {
+        if(configtab[i].flags&CFG_F_REQUIRED) {
             write_log("required keyword '%s' not defined",configtab[i].keyword);
             rc=0;
         }
@@ -557,12 +631,51 @@ int readconfig(const char *cfgname)
             setvalue(ci,configtab[i].def_val,configtab[i].type);
         else memset(&ci->value,0,sizeof(ci->value));
         ci->condition=NULL;ci->next=NULL;
-        if(configtab[i].flags&12) {
+        if(configtab[i].flags&(CFG_F_SEEN_IF|CFG_F_SEEN)) {
             cfgitem_t *cia=configtab[i].items;
             for(;cia&&cia->next;cia=cia->next);
             if(cia)cia->next=ci;
         }
         if(!configtab[i].items)configtab[i].items=ci;
+    }
+    /* Defined-but-empty required keywords (and the dummy slots just
+     * installed for missing ones) are not usable. */
+    for(i=0;i<CFG_NNN;i++)
+        if((configtab[i].flags&CFG_F_REQUIRED) && !required_value_ok(i)) {
+            if(configtab[i].flags&CFG_F_SEEN)
+                write_log("required keyword '%s' has no usable value",
+                    configtab[i].keyword);
+            rc=0;
+        }
+    /* asooutbound/bsooutbound are nonif but not each-required; one of
+     * them must be set or outbound_init() has nothing to scan. */
+    if(!cfgs(CFG_ASOOUTBOUND) && !cfgs(CFG_BSOOUTBOUND)) {
+        write_log("required keyword 'asooutbound' or 'bsooutbound' not defined");
+        rc=0;
+    }
+    /* Outbound Hayes/modem is on iff at least one `port' device is
+     * listed. There is no --disable-modem: omit every `port' line and
+     * the daemon never calls tty_findport() (DEBUG nottyport). IP
+     * sessions still go out when subst supplies a host. Incoming
+     * analog (getty + qico -a) does not read `port'.
+     *
+     * Only modemconnect is actually required then: dial's modem_chat()
+     * treats that list as success. A NULL connect list never matches
+     * CONNECT; if error/busy are also NULL, chat returns MC_OK without
+     * waiting. modemok / modemerror / modembusy classify OK/ERROR/BUSY
+     * but the loops skip a NULL list. lockdir defaults to /tmp.
+     * phonetr is a no-op when omitted. */
+    if(configtab[CFG_PORT].flags&(CFG_F_SEEN|CFG_F_SEEN_IF)) {
+        if(!keyword_slist_has_text(CFG_PORT)) {
+            write_log("required keyword 'port' has no usable value");
+            rc=0;
+        } else if(!keyword_slist_has_text(CFG_MODEMCONNECT)) {
+            if(configtab[CFG_MODEMCONNECT].flags&(CFG_F_SEEN|CFG_F_SEEN_IF))
+                write_log("required keyword 'modemconnect' has no usable value (needed when 'port' is set)");
+            else
+                write_log("required keyword 'modemconnect' not defined (needed when 'port' is set)");
+            rc=0;
+        }
     }
     if(rc) { /* read tables */
         recode_to_local(NULL);
@@ -648,7 +761,10 @@ void killconfig(void)
             xfree(c);
         }
         configtab[i].items=NULL;
-        configtab[i].flags=0;
+        /* Keep required/nonif from qconf.x; drop only the parse-time
+         * seen bits. Zeroing everything made the next readconfig()
+         * treat address/inbound/log as optional. */
+        configtab[i].flags &= CFG_F_STATIC;
     }
 }
 

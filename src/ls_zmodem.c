@@ -170,6 +170,8 @@ int ls_zsendhhdr(int frametype, int len, byte *hdr)
 	crc = STOI(crc & 0xffff);
 	ls_sendhex(crc >> 8);
 	ls_sendhex(crc & 0xff);
+	/* Spec-compliant HEX trailer. Peers that omit it on receive are
+	 * handled in ls_zrecvhdr(); we still emit the canonical form. */
 	BUFCHAR(CR);
 	BUFCHAR(LF|(char)0x80);
 	if(frametype != ZACK && frametype != ZFIN) BUFCHAR(XON);
@@ -193,9 +195,7 @@ int ls_zrecvhdr(byte *hdr, int *hlen, int timeout)
 		rhZVBIN32,
 		rhZVBINR32,
 		rhBYTE,
-		rhCRC,
-		rhCR,
-		rhLF
+		rhCRC
 	} state = rhInit;
 	static enum rhREADMODE {
 		rm8BIT,
@@ -338,35 +338,15 @@ int ls_zrecvhdr(byte *hdr, int *hlen, int timeout)
 				DEBUG(('Z',2,"ls_zrecvhdr: CRC%d got %08x, claculated %08x",(2==crcl)?16:32,incrc,crc));
 				if (incrc != crc) return LSZ_BADCRC;
 				*hlen = got;
-				/* We need to read <CR><LF> after HEX header */
-				if(rmHEX == readmode) { state = rhCR; readmode = rm8BIT; }
-				else { return frametype; }
-			}
-			break;
-		case rhCR:
-			state = rhInit;
-			DEBUG(('Z',2,"ls_zrecvhdr: rhCR"));
-			switch(c) {
-			case CR:
-			case CR|0x80:		/* we need LF after <CR> */
-				state = rhLF;
-				break;
-			case LF:
-			case LF|0x80:		/* Ok, UNIX-like EOL */
+				/* HEX headers are spec'd to end with CR LF [XON], but that
+				 * trailer is not CRC-covered. Many ZModem clones omit
+				 * some or all of it; treating a missing CR/LF as BADCRC
+				 * aborted otherwise valid EMSI/ZModem sessions.
+				 * Do not drain the trailer here (no ungetc): leftover
+				 * CR/LF/XON are skipped as garbage in rhInit until the
+				 * next ZPAD, same as other line noise. We still *send*
+				 * a spec-compliant trailer in ls_zsendhhdr(). */
 				return frametype;
-			default:
-				return LSZ_BADCRC;
-			}
-			break;
-		case rhLF:
-			state = rhInit;
-			DEBUG(('Z',2,"ls_zrecvhdr: rhLF"));
-			switch(c) {
-			case LF:
-			case LF|0x80:
-				return frametype;
-			default:
-				return LSZ_BADCRC;
 			}
 			break;
 		default:

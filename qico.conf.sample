@@ -31,8 +31,14 @@
 #   flags $(bar)lala $(foo)         -- main goal: use defines in keywords.
 # now value of keyword 'flags' become 'test-lala test'.
 #
-# keywords marked as '(required)' must be defined but keywords marked
-# as '(required for modem)' required only for non-ip calls (ex. modem).
+# keywords marked as '(required)' must be defined.
+# keywords marked as '(required for modem)' are required only when at
+# least one `port' line is set (that is the switch for outbound analog:
+# the daemon then uses tty_findport and Hayes chat). Only `modemconnect'
+# is enforced then; the other modem strings classify replies but a
+# NULL list is skipped. Omit every `port' line to disable origination
+# on a serial modem; IP/BinkP via subst hosts still works. Incoming
+# analog (mgetty/getty + qico -a) does not use `port'.
 # keywords marked as '(nonif)' can't be defined inside if-expressions.
 #
 ###############################################################################
@@ -288,7 +294,8 @@ history		$(logz)/history
 pidfile		/var/run/qico.pid
 
 
-# lock directory path (required for modem)
+# lock directory path (UUCP-style LCK.. files for serial devices).
+# default: /tmp. Only used when `port' is set; IP sessions ignore it.
 lockdir		/var/lock
 
 # created directories permissions
@@ -318,7 +325,9 @@ defperm		0644
 ### modem and dialing parameters ##############################################
 ###############################################################################
 # modem ports (one at a line) in form <device>[:speed]
-# (default speed is 9600) (required for modem)
+# (default speed is 9600). This keyword is the outbound-modem switch:
+# if it is present, modemconnect must be set too.
+# Comment out every `port' line for an IP-only mailer.
 port		ttyS1:115200
 ;port		ttyS2
 
@@ -334,7 +343,8 @@ rescanperiod	30
 ;longrescan	4
 
 # phone translations, `=' means all other phones - must be last translation,
-# because first matching translation will be used (required for modem)
+# because first matching translation will be used. Optional: if omitted,
+# nodelist numbers are dialled unchanged. Typical for local PSTN prefixes.
 phonetr		7-095-
 phonetr		7-	8W-
 phonetr		=	8W10-
@@ -348,18 +358,18 @@ cancall		CM
 # RS232 status lines, thus it is optional and off by default!
 ;modemcheckdsr	yes
 
-# modem connect strings (required for modem)
+# modem connect strings (required for modem: matched after ATD)
 modemconnect    CONNECT
 
-# modem ok strings (required for modem)
+# modem ok strings (AT/reset/alive; optional, NULL list is skipped)
 modemok		OK
 
-# modem error strings (required for modem)
+# modem error strings (optional; without them NO CARRIER waits for timeout)
 modemerror	ERROR
 modemerror	NO CARRIER
 modemerror	NO ANSWER
 
-# modem busy strings (required for modem)
+# modem busy strings (optional; without them BUSY waits for timeout)
 modembusy	BUSY
 modembusy	RING
 

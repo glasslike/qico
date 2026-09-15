@@ -15,6 +15,22 @@ Unreleased
   ./configure, not the frozen CVS leftover 2013-02-23 in cvsdate.h.
   Tarballs from make dist keep the stamp in src/source-date; trees
   without git print [unknown].
+- zmodem: after a valid HEX-header CRC, accept the frame without
+  requiring CR/LF. The trailer is not CRC-covered; many clones omit it
+  and the old rhCR/rhLF states turned that into a false BADCRC.
+  Leftover CR/LF/XON are skipped as garbage until the next ZPAD. We
+  still send the spec CR/LF/XON trailer.
+- config: `port' is the outbound-modem switch. When it is set,
+  modemconnect must have a usable value or qico refuses to start
+  (otherwise Hayes chat never matches CONNECT). Omit every `port'
+  line for IP-only. modemok/error/busy and phonetr stay optional.
+- config: killconfig() no longer clears the required/nonif bits from
+  qconf.x. Startup is rereadconfig(), which used to wipe those bits
+  so a missing address/inbound/log/masterlog/nodelist/pidfile passed
+  parse and then SIGSEGV'd (cfgal(CFG_ADDRESS)->addr). readconfig()
+  now also rejects empty values for those keywords and requires at
+  least one of asooutbound/bsooutbound. cfg*() accessors no longer
+  dereference a NULL fallback item.
 
 
 Version 0.60.0

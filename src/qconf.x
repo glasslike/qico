@@ -1,6 +1,13 @@
 #**********************************************************
 #* config keywords definition
 #* $Id: qconf.x,v 1.11 2005/08/16 19:15:05 mitry Exp $
+#*
+#* Columns: keyword, type, flags, default.
+#* flags: 1 = required at top level, 2 = not allowed inside if,
+#*        3 = both. Runtime bits 4/8 (seen in if / seen at top)
+#*        are OR'd on while parsing; killconfig must keep 1 and 2.
+#* modemconnect is not flag-1: readconfig() requires it only when
+#* `port' is set (outbound analog). Omit `port' for IP-only.
 #**********************************************************
 address,C_ADDRL,1,NULL
 aftermail,C_STR,0,NULL
