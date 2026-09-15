@@ -679,8 +679,30 @@ static char *ndl_format_host(const char *host, const char *port, const char *def
 
 
 /*
- * True if flag token `p' is `name' or `name:...' (case-insensitive).
- * Rejects accidental prefixes such as IBNX.
+ * Trim ASCII whitespace at both ends of a mutable buffer (flag tokens
+ * may have spaces after a comma).
+ */
+static char *ndl_trim(char *s)
+{
+	char	*e;
+
+	if ( !s )
+		return s;
+	while( *s && isspace( (unsigned char) *s ))
+		s++;
+	if ( !*s )
+		return s;
+	e = s + strlen( s );
+	while( e > s && isspace( (unsigned char) e[-1] ))
+		*--e = '\0';
+	return s;
+}
+
+
+/*
+ * True if this comma-separated flag token is `name` or `name:...`
+ * (case-insensitive). Order of flags in the nodelist line does not
+ * matter; IBNX does not match IBN.
  */
 static int ndl_flag_is(const char *p, const char *name)
 {
@@ -697,11 +719,37 @@ static int ndl_flag_is(const char *p, const char *name)
 
 static const char *ndl_flag_arg(const char *p, const char *name)
 {
-	size_t n = strlen( name );
+	size_t n;
 
+	if ( !p || !name )
+		return "";
+	n = strlen( name );
 	if ( p[n] == ':' )
 		return p + n + 1;
 	return "";
+}
+
+
+/*
+ * FTS-5000: Keyword,Number,Name,Location,Sysop,Phone,Baud,Flags...
+ * Flags are everything after the 7th comma of the intact line, taken
+ * before strsep() splits the row.
+ */
+static char *ndl_csv_rest(const char *line, int skip_fields)
+{
+	const char	*p;
+	int		n = 0;
+
+	if ( !line || skip_fields < 1 )
+		return NULL;
+	for( p = line; *p; p++ ) {
+		if ( *p == ',' ) {
+			n++;
+			if ( n == skip_fields )
+				return xstrdup( p + 1 );
+		}
+	}
+	return NULL;
 }
 
 
@@ -726,13 +774,17 @@ static int ndl_phone_is_modem(const char *phone)
 /*
  * Fill ninfo_t.host / opt from nodelist internet flags (FTS-5001 / FSC-1058).
  *
- * Host, from a real Z2DAILY line e.g.
+ * Flag tokens are comma-separated and may appear in any order:
  *   INA:ftsc.bnbbbs.net,IBN:24555,IFC
  *   → host ftsc.bnbbbs.net:24555 (BinkP; 24555 is not the 24554 default)
  *   INA:siliconu.com,IBN
+ *   IBN,INA:siliconu.com
  *   → host siliconu.com (tcp_connect uses 24554)
- *   INA:mbsedev.bnbbbs.net,IBN:24556,IFC:60279
- *   → BinkP mbsedev.bnbbbs.net:24556; subst ifc → :60279
+ *   CM,IBN,INA:f46n5015z2.ddns.net,U,NPK
+ *   → host f46n5015z2.ddns.net (bare IBN = BinkP, address from INA)
+ *
+ * Other tokens (CM, U, NPK, V34, …) are skipped. `U` is only the
+ * userflag introducer (FTS-5001 §6.1), not a prefix on INA/IBN.
  *
  * Resolution order (binkd nodelist.pl + IRD):
  *   1. IBN:host or IFC:host
@@ -773,6 +825,7 @@ static void ndl_apply_inet_flags(ninfo_t *nl, const ftnaddr_t *addr, int proto_m
 
 	flags = rest = xstrdup( nl->flags );
 	while(( tok = strsep( &rest, "," ))) {
+		tok = ndl_trim( tok );
 		if ( !*tok )
 			continue;
 		if ( ndl_flag_is( tok, "INA" ))
@@ -905,6 +958,12 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 
 	t = ndl_str;
 	nlent = xcalloc( 1, sizeof( ninfo_t ));
+	/*
+	 * Flags from the intact line (FTS-5000 field 8), before strsep()
+	 * punches NULs into ndl_str. The SPEED-case copy of `t' is only
+	 * a fallback if the line has fewer than 7 commas.
+	 */
+	nlent->flags = ndl_csv_rest( ndl_str, 7 );
 
 	DEBUG(('N',3,"ndl_query: ndl_str '%s'",ndl_str));
 	while((	p = strsep( &t, "," ))) {
@@ -947,7 +1006,8 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 
 		case NDL_SPEED:
 			nlent->speed = atoi( p );
-			nlent->flags = xstrdup( t );
+			if ( !nlent->flags )
+				nlent->flags = xstrdup( t );
 			break;
 
 		case NDL_FLAGS:
@@ -1809,6 +1869,16 @@ int applysubst(ninfo_t *nl, subst_t *subs)
 	if ( d->host ) {
 		xfree( nl->host );
 		nl->host = xstrdup( d->host );
+	}
+
+	if ( from_nl && from_nl->flags ) {
+		/*
+		 * Rebuild below reads nl->flags. The first query may have
+		 * been a dummy Unknown (empty flags); the subst '-' lookup
+		 * has the real nodelist line.
+		 */
+		xfree( nl->flags );
+		nl->flags = xstrdup( from_nl->flags );
 	}
 
 	if ( d->timegaps ) {
