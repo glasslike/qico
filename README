@@ -30,8 +30,11 @@ Features
 Building & Installation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-See [DEBIAN12.md](DEBIAN12.md). 
-Install `systemd/qico.service` on the host, see [systemd/README.md](systemd/README.md).
+Debian 12 / Raspberry Pi OS:
+https://github.com/glasslike/qico/blob/master/DEBIAN12.md
+
+systemd units (enable qico.target, see systemd/README.md):
+https://github.com/glasslike/qico/blob/master/systemd/README.md
 
    Optional:
    $ mkdir ../obj_qico
