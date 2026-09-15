@@ -30,6 +30,9 @@ Features
 Building & Installation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+See [DEBIAN12.md](DEBIAN12.md). 
+Install `systemd/qico.service` on the host, see [systemd/README.md](systemd/README.md).
+
    Optional:
    $ mkdir ../obj_qico
    $ cd ../obj_qico
