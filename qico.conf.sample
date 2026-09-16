@@ -235,17 +235,16 @@ estimatedtime	no
 # (required)(nonif)
 nlpath		$(spool)/nl
 
-# Node- and point lists. zone can be specified if omitted in list.
+# Nodelists. zone can be specified if omitted in list.
 # The lists order is important: specify most actual list first.
-# Pointlists (z2pnt.999, PNT*.999) are extra nodelist lines; after
-# Boss,z:n/f both Point,N and the listed form ,N,name,... become
-# z:n/f.N and do not replace the Boss node from the main list.
 # IP calls read FTS-5001 flags from the list (INA, IBN, IFC, IRD);
 # see `rootdomain' and qico.substs.sample for host priority.
+# There is no reason adding a pointlist (z2pnt / PNT*). 
+# Outbound to points is not implemented; Boss,z:n/f only names the points below it. 
+# The boss node is already in the nodelist — a pointlist is not needed to call it.
 #
 # (required)(nonif)
 ;nodelist	$(spool)/files/NET5030.999 2
-;nodelist	$(spool)/files/PNT5030.999
 nodelist	nodelist.999
 
 # Check for `listed' all addresses of remote or only one (any).
