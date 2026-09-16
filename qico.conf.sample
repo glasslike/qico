@@ -237,6 +237,9 @@ nlpath		$(spool)/nl
 
 # Node- and point lists. zone can be specified if omitted in list.
 # The lists order is important: specify most actual list first.
+# Pointlists (z2pnt.999, PNT*.999) are extra nodelist lines; after
+# Boss,z:n/f both Point,N and the listed form ,N,name,... become
+# z:n/f.N and do not replace the Boss node from the main list.
 # IP calls read FTS-5001 flags from the list (INA, IBN, IFC, IRD);
 # see `rootdomain' and qico.substs.sample for host priority.
 #

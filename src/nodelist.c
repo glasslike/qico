@@ -1227,10 +1227,32 @@ static int ndl_compile(void)
 						gp = 1;
 					continue;
 				}
-				
-				if ( gp && !strncmp( s, "Point,", 6 )) {
-					fa.p = ndl_ext( s );
 
+				/*
+				 * Pointlist block (FTS-5000): every row after
+				 * Boss,z:n/f is a point of that node. Official
+				 * keyword is Point,N; Z2PNT and regional PNT*
+				 * lists also use the listed-node CSV form
+				 * ",N,name,location,sysop,phone,baud,flags"
+				 * (and Hold,/Pvt,/Hub,). Only "Point," used to
+				 * update fa.p; every other Boss-block line was
+				 * still indexed as z:n/f.0 and collided with
+				 * the real node in the nodelist — outbound to
+				 * 2:5015/46 then read z2pnt ",7,RA3TUQ7" (no
+				 * INA) and fell back to DNS.
+				 */
+				if ( gp
+					&& strncmp( s, "Zone,", 5 )
+					&& strncmp( s, "Host,", 5 )
+					&& strncmp( s, "Region,", 7 ))
+				{
+					/* Down points are skipped, same as Down nodes */
+					if ( !strncmp( s, "Down,", 5 ))
+						continue;
+					fa.p = ndl_ext( s );
+					/* Point 0 is the Boss; keep the nodelist node */
+					if ( fa.p <= 0 )
+						continue;
 				} else if ( !strncmp( s, "Zone,", 5 )) {
 					gp = 0;
 					fa.z = fa.n = ndl_ext( s );
@@ -1244,7 +1266,7 @@ static int ndl_compile(void)
 				} else if ( !gp && strncmp( s, "Down,", 5 )) {
 					fa.f = ndl_ext( s );
 					fa.p = 0;
-				} else if ( !gp )
+				} else
 					continue;
 
 				if ( fa.z < 0 || fa.n < 0 || fa.f < 0 || fa.p < 0 )
