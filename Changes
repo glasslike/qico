@@ -12,10 +12,6 @@ Unreleased
   IP without a subst; a listed node that still has a real phone keeps
   the analog path unless subst asks for binkp/ifc. `rootdomain`
   (default binkp.net) is binkd's `root-domain`.
-- nodelist: after Boss,z:n/f in a pointlist (z2pnt / PNT*), listed-form
-  ",N,..." and Hold/Pvt/Hub/Point rows are indexed as z:n/f.N. Those
-  lines used to be stored as the Boss 4D address and replaced the real
-  node from the nodelist (INA lost, DNS fallback).
 - nodelist: if qnode.idx is missing, compile it on query the same way
   as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
   a corrupt index, inbound listed-check, and qico -n are unchanged.
