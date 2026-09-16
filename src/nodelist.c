@@ -1237,9 +1237,7 @@ static int ndl_compile(void)
 				 * (and Hold,/Pvt,/Hub,). Only "Point," used to
 				 * update fa.p; every other Boss-block line was
 				 * still indexed as z:n/f.0 and collided with
-				 * the real node in the nodelist — outbound to
-				 * 2:5015/46 then read z2pnt ",7,RA3TUQ7" (no
-				 * INA) and fell back to DNS.
+				 * the real node in the nodelist.
 				 */
 				if ( gp
 					&& strncmp( s, "Zone,", 5 )
