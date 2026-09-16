@@ -36,16 +36,7 @@ https://github.com/glasslike/qico/blob/master/DEBIAN12.md
 systemd units (enable qico.target):
 https://github.com/glasslike/qico/blob/master/systemd/README.md
 
-   Optional:
-   $ mkdir ../obj_qico
-   $ cd ../obj_qico
-
-   $ [path_to/]configure --help
-   $ [path_to/]configure [options desired]
-   $ make
-   $ make install or make install-strip
-
-  Config put in the right place to customize it to fit your needs.
+Config put in the right place and customize it to fit your needs.
   
 Using
 ~~~~~
