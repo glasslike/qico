@@ -30,10 +30,10 @@ Features
 Building & Installation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Debian 12 / Raspberry Pi OS:
+Debian 12:
 https://github.com/glasslike/qico/blob/master/DEBIAN12.md
 
-systemd units (enable qico.target, see systemd/README.md):
+systemd units (enable qico.target):
 https://github.com/glasslike/qico/blob/master/systemd/README.md
 
    Optional:
