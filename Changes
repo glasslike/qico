@@ -1,60 +1,37 @@
 Unreleased
 ~~~~~~~~~~
-- share: binkd-compatible shared AKA for netmail failover delivery.
-  Config: share <shared-aka> <member1> [member2 ...]
-  Fan-out queue/poll to members, ADR/EMSI remote-aka adjustment, and
-  rewrite of uncompressed .pkt dest/password to the session peer on send.
-- nodelist: parse FTS-5001 internet flags (INA, IBN, IFC, IRD) when
-  querying a node. IP host order matches binkd: subst host, else
-  nodelist INA/IBN:/IFC:, else DNS fN.nN.zZ.<rootdomain>. `subst ... -`
-  with binkp/ifc no longer jumps straight to DNS. Listed IBN/IFC nodes
-  without a Hayes-dialable phone (unpublished / Pvt) are callable via
-  IP without a subst; a listed node that still has a real phone keeps
-  the analog path unless subst asks for binkp/ifc. `rootdomain`
-  (default binkp.net) is binkd's `root-domain`.
-- nodelist: if qnode.idx is missing, compile it on query the same way
-  as a stale index (ENOENT → NDL_ENEEDCOMPILE). Other open failures,
-  a corrupt index, inbound listed-check, and qico -n are unchanged.
-- binkplisted: optional nodelist listed-check on BinkP sessions
-  (default no). When yes, uses needalllisted like EMSI so `if listed`,
-  FREQ listed status and /LST in the options log work on BinkP too.
-- emsi: parse/emit the 4-digit EMSI_DAT length and CRC as unsigned, not
-  size_t. On LP64, sscanf("%X") into size_t left the high half garbage
-  and rejected valid frames with Bad EMSI_DAT length/CRC.
-- binkp.h: drop the unused `bp_msg` global from the M_ command enum
-  (GCC 10+ -fno-common). -fcommon stays for other legacy commons.
-- version: qico -v / EMSI banner date is the UTC git commit time from
-  ./configure, not the frozen CVS leftover 2013-02-23 in cvsdate.h.
-  Tarballs from make dist keep the stamp in src/source-date; trees
-  without git print [unknown].
-- zmodem: after a valid HEX-header CRC, accept the frame without
-  requiring CR/LF. The trailer is not CRC-covered; many clones omit it
-  and the old rhCR/rhLF states turned that into a false BADCRC.
-  Leftover CR/LF/XON are skipped as garbage until the next ZPAD. We
-  still send the spec CR/LF/XON trailer.
-- config: `port' is the outbound-modem switch. When it is set,
-  modemconnect must have a usable value or qico refuses to start
-  (otherwise Hayes chat never matches CONNECT). Omit every `port'
-  line for IP-only. modemok/error/busy and phonetr stay optional.
-- config: killconfig() no longer clears the required/nonif bits from
-  qconf.x. Startup is rereadconfig(), which used to wipe those bits
-  so a missing address/inbound/log/masterlog/nodelist/pidfile passed
-  parse and then SIGSEGV'd (cfgal(CFG_ADDRESS)->addr). readconfig()
-  now also rejects empty values for those keywords and requires at
-  least one of asooutbound/bsooutbound. cfg*() accessors no longer
-  dereference a NULL fallback item.
+- new keyword: `share` <shared-aka> <member1> [member2 ...]
+  Binkd-compatible shared AKA for netmail failover.
+- new keyword: `rootdomain` <dns-suffix>
+  Default: binkp.net. Suffix for fN.nN.zZ.<root> (binkd `root-domain`).
+- new keyword: `binkplisted` yes/no. Default: no.
+  Nodelist listed-check on BinkP so `if listed`, FREQ listed status
+  and /LST work as on EMSI.
+- nodelist: parse FTS-5001 internet flags (INA, IBN, IFC, IRD). Host
+  order matches binkd: subst, then nodelist, then DNS
+  fN.nN.zZ.<rootdomain>. `subst ... -` with binkp/ifc no longer skips
+  the list. Listed IBN/IFC nodes without a Hayes phone are callable
+  via IP.
+- nodelist: compile a missing qnode.idx on query like a stale index.
+- binkp: finish the empty extra batch on binkp/1.1 so a file transfer
+  does not hang until timeout.
+- emsi: parse EMSI_DAT length and CRC correctly on 64-bit.
+- zmodem: accept HEX headers without a CR/LF trailer (many clones omit it).
+- version: qico -v / EMSI banner date is the UTC git commit time.
+- qctl: default to loopback instead of connect(0.0.0.0).
+- portability: musl-safe memmove; configure probes for socklen_t,
+  SIGRTMIN/CQUIT, MD5 prototypes, and Perl xsinit/PIE.
 
 
 Version 0.59.2-rpe (Rabarber Pie Edition)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Fork baseline freeze before shared-AKA work.
 Based on kosfango/qico 0.59.1 plus:
 - Debian 12 / modern toolchain: -fcommon, Perl/ncurses via LDADD, 64-bit MD5.
 - aarch64 fix: qcc/qctl getopt uses int (unsigned char broke option parsing).
 - flagexp/flex: reset lexer between if-expression parses so `if protected`
   selects secure inbound correctly.
 - systemd: qico.target + BinkP socket activation (originate + answer).
-- osnametemplate: choose which uname() fields (sysname, release, machine)
+- new keyword: osnametemplate: choose which uname() fields (sysname, release, machine)
   go into the auto-detected OS ident; BinkP and other consumers unchanged.
 
 
