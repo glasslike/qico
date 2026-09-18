@@ -377,6 +377,14 @@ static void initscreen(void)
 	wbkgd(whelp,COLOR_PAIR(8)|' ');
 	whdr=newwin(1,COL-2,0,2);
 	wbkgd(whdr,COLOR_PAIR(13)|A_BOLD|' ');
+	/*
+	 * Keyboard input is read with wgetch(whelp), not getch()/stdscr.
+	 * wgetch refreshes its window; stdscr only holds the frame, so a
+	 * blocking getch() left qcc showing an empty box on BSD curses.
+	 */
+	keypad(whelp, TRUE);
+	nodelay(whelp, TRUE);
+	notimeout(whelp, TRUE);
 	wrefresh(wmain);
 	wrefresh(wstat);
 	wrefresh(whdr);
@@ -686,32 +694,20 @@ static void delslot(int slt)
 }
 
 /*
- * How long keypad() may wait for the rest of an ESC sequence (CSI arrows)
- * after select() said stdin is readable. ncurses already returns quickly
- * under nodelay(); native BSD curses can ignore nodelay and block forever
- * inside getch(). 100 ms is enough to assemble a local/SSH burst, and
- * short enough that a lone ESC cannot freeze the UI.
- */
-#ifndef KEY_GATHER_MS
-#define KEY_GATHER_MS 100
-#endif
-
-/*
  * Read one key after select() reported fd 0 readable.
  *
- * Restore nodelay() afterwards so the rest of qcc (and the next idle
- * loop) keeps the original non-blocking policy. Do not follow ESC with
- * a second getch(): that extra read is what hung qcc on NetBSD libcurses,
- * and with keypad() the first getch() already returns KEY_LEFT / KEY_F(n).
+ * Native BSD curses can ignore nodelay() while keypad() waits for the
+ * rest of an ESC sequence, and wgetch(stdscr) would refresh only the
+ * frame over the subwindows. notimeout() forbids that extra wait;
+ * wgetch(whelp) refreshes the help line only. Do not use timeout(n>0)
+ * here: it did not cap the keypad wait on NetBSD and froze the UI.
+ * Do not follow ESC with a second getch().
  */
 static int getch_ready(void)
 {
-	int ch;
-
-	timeout(KEY_GATHER_MS);
-	ch = getch();
-	nodelay(stdscr, TRUE);
-	return ch;
+	nodelay(whelp, TRUE);
+	notimeout(whelp, TRUE);
+	return wgetch(whelp);
 }
 
 static int inputstr(char *str, char *name, int mode)

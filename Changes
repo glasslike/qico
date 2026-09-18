@@ -1,7 +1,8 @@
 Unreleased
 ~~~~~~~~~~
 - qcc: do not block forever in getch() on native BSD curses (keep select
-  on stdin; cap keypad ESC wait; drop the second getch after ESC).
+  on stdin; wgetch on the help line with notimeout; drop the second
+  getch after ESC).
 
 
 Version 0.60.0
