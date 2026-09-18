@@ -1,7 +1,7 @@
 Unreleased
 ~~~~~~~~~~
-- qcc: read keys with select/read, not wgetch, so native BSD curses
-  cannot freeze the UI on ESC/keypad.
+- qcc: reset tty to ASCII G0 (drop KOI ESC ( K), paint subwindows
+  explicitly, read stdin non-blocking without wgetch.
 
 
 Version 0.60.0

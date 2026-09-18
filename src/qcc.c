@@ -83,6 +83,8 @@
 #include <errno.h>
 #endif
 
+#include <fcntl.h>
+
 #ifdef HAVE_NCURSES_H
 #include <ncurses.h>
 #else
@@ -237,6 +239,7 @@ static slot_t *slots[MAX_SLOTS];
 static qslot_t *queue;
 static int currslot,allslots=-9,q_pos,q_first,q_max,crey=0,crex=0;
 static int sizechanged=0,quitflag=0,ins=1,edm=0,beepdisable=0,MH=MAXMH;
+static int use_color=0;
 static char *m_header=NULL,*m_status=NULL;
 static WINDOW *wlog,*wmain,*whdr,*wstat,*whelp;
 static int sock=-1,hstlast=0;
@@ -319,7 +322,10 @@ static void mvwhline(WINDOW *win,int y,int x,int ch,int n)
 static void draw_screen(void)
 {
 	redrawwin(stdscr);
-	attrset(COLOR_PAIR(2));
+	if (use_color)
+		attrset(COLOR_PAIR(2));
+	else
+		attrset(A_NORMAL);
 	mvvline(1,0,ACS_VLINE,LINES-3);
 	mvvline(1,COL+1,ACS_VLINE,LINES-3);
 	mvaddch(MH+1,0,ACS_LTEE);
@@ -333,57 +339,94 @@ static void draw_screen(void)
 	mvaddch(LINES-2,COL,']');
 	mvaddch(LINES-2,COL+1,ACS_LRCORNER);
 	mvhline(MH+1,1,ACS_HLINE,COL);
-	attron(COLOR_PAIR(8));
+	if (use_color)
+		attron(COLOR_PAIR(8));
 	mvhline(LINES-1,0,' ',COLS);
 	refresh();
 }
 
 static void initscreen(void)
 {
-	initscr();start_color();
+	initscr();
 	cbreak();noecho();nonl();
 	nodelay(stdscr,TRUE);
 	/* Keys are read(2) from stdin in getch_ready(); keypad() would
 	 * steal ESC sequences and can still block on native BSD curses. */
 	keypad(stdscr,FALSE);
 	leaveok(stdscr,FALSE);
+	/*
+	 * Old qcc switched G0 to KOI with ESC ( K. ncurses resets the
+	 * charset in initscr(); native BSD curses often does not, so the
+	 * ACS frame stayed visible and ASCII text became blank. Force US
+	 * ASCII G0 after initscr.
+	 */
+	printf("\033(B");
+	fflush(stdout);
 	if(LINES<MH*2)MH=LINES/2-1;
-	init_pair(1,COLOR_BLUE,COLOR_BLACK);
-	init_pair(2,COLOR_GREEN,COLOR_BLACK);
-	init_pair(3,COLOR_CYAN,COLOR_BLACK);
-	init_pair(4,COLOR_RED,COLOR_BLACK);
-	init_pair(5,COLOR_MAGENTA,COLOR_BLACK);
-	init_pair(6,COLOR_YELLOW,COLOR_BLACK);
-	init_pair(7,COLOR_WHITE,COLOR_BLACK);
-	init_pair(8,COLOR_BLACK,COLOR_WHITE);
-	init_pair(9,COLOR_RED,COLOR_WHITE);
-	init_pair(10,COLOR_MAGENTA,COLOR_WHITE);
-	init_pair(11,COLOR_YELLOW,COLOR_WHITE);
-	init_pair(12,COLOR_YELLOW,COLOR_BLUE);
-	init_pair(13,COLOR_WHITE,COLOR_BLUE);
-	init_pair(14,COLOR_CYAN,COLOR_BLUE);
-	init_pair(15,COLOR_GREEN,COLOR_BLUE);
-	init_pair(16,COLOR_BLACK,COLOR_CYAN);
-	bkgd(COLOR_PAIR(2)|' ');
+	use_color = 0;
+	if (has_colors()) {
+		start_color();
+		use_color = 1;
+		init_pair(1,COLOR_BLUE,COLOR_BLACK);
+		init_pair(2,COLOR_GREEN,COLOR_BLACK);
+		init_pair(3,COLOR_CYAN,COLOR_BLACK);
+		init_pair(4,COLOR_RED,COLOR_BLACK);
+		init_pair(5,COLOR_MAGENTA,COLOR_BLACK);
+		init_pair(6,COLOR_YELLOW,COLOR_BLACK);
+		init_pair(7,COLOR_WHITE,COLOR_BLACK);
+		init_pair(8,COLOR_BLACK,COLOR_WHITE);
+		init_pair(9,COLOR_RED,COLOR_WHITE);
+		init_pair(10,COLOR_MAGENTA,COLOR_WHITE);
+		init_pair(11,COLOR_YELLOW,COLOR_WHITE);
+		init_pair(12,COLOR_YELLOW,COLOR_BLUE);
+		init_pair(13,COLOR_WHITE,COLOR_BLUE);
+		init_pair(14,COLOR_CYAN,COLOR_BLUE);
+		init_pair(15,COLOR_GREEN,COLOR_BLUE);
+		init_pair(16,COLOR_BLACK,COLOR_CYAN);
+		bkgd(COLOR_PAIR(2)|' ');
+	}
 	draw_screen();
  	signal(SIGWINCH,sigwinch);
 	wmain=newwin(MH,COL,1,1);
 	scrollok(wmain,FALSE);
-	wbkgd(wmain,COLOR_PAIR(6)|' ');
+	if (use_color)
+		wbkgd(wmain,COLOR_PAIR(6)|' ');
  	wlog=newwin(LOGSIZE,COL,MH+2,1);
-	wbkgd(wlog,COLOR_PAIR(7)|' ');
+	if (use_color)
+		wbkgd(wlog,COLOR_PAIR(7)|' ');
 	scrollok(wlog,TRUE);
 	wstat=newwin(1,COL-2,LINES-2,2);
-	wbkgd(wstat,COLOR_PAIR(6)|' ');
+	if (use_color)
+		wbkgd(wstat,COLOR_PAIR(6)|' ');
 	whelp=newwin(1,COL,LINES-1,1);
-	wbkgd(whelp,COLOR_PAIR(8)|' ');
+	if (use_color)
+		wbkgd(whelp,COLOR_PAIR(8)|' ');
 	whdr=newwin(1,COL-2,0,2);
-	wbkgd(whdr,COLOR_PAIR(13)|A_BOLD|' ');
+	if (use_color)
+		wbkgd(whdr,COLOR_PAIR(13)|A_BOLD|' ');
 	wrefresh(wmain);
 	wrefresh(wstat);
 	wrefresh(whdr);
  	wrefresh(wlog);
 	wrefresh(whelp);
+}
+
+/*
+ * Native BSD curses may leave subwindows invisible after refresh() of
+ * stdscr (the frame). Touch and refresh content windows on top.
+ */
+static void paint_ui(void)
+{
+	if (wmain) { touchwin(wmain); wrefresh(wmain); }
+	if (wlog) { touchwin(wlog); wrefresh(wlog); }
+	if (whdr) { touchwin(whdr); wrefresh(whdr); }
+	if (wstat) { touchwin(wstat); wrefresh(wstat); }
+	if (whelp) { touchwin(whelp); wrefresh(whelp); }
+	if (currslot >= 0 && currslot < allslots && slots[currslot] &&
+	    slots[currslot]->wlog) {
+		touchwin(slots[currslot]->wlog);
+		wrefresh(slots[currslot]->wlog);
+	}
 }
 
 static void donescreen(void)
@@ -1458,7 +1501,7 @@ int main(int argc, char **argv, char **envp)
 #ifdef HAVE_SETLOCALE
 	setlocale(LC_ALL, "C");
 #endif
-/*cyr*/	printf("\033(K");fflush(stdout);
+	/* Do not send ESC ( K (KOI G0). See initscreen(). */
 
 	signal(SIGALRM, sighup);
 	alarm(6);
@@ -1504,6 +1547,11 @@ int main(int argc, char **argv, char **envp)
 	signal(SIGKILL,sighup);
 	srand(time(NULL));
 	initscreen();
+	{
+		int fl = fcntl(0, F_GETFL, 0);
+		if (fl >= 0)
+			fcntl(0, F_SETFL, fl | O_NONBLOCK);
+	}
 	currslot=-1;
 	allslots=0;
 	freshhdr();wrefresh(whdr);
@@ -1512,6 +1560,7 @@ int main(int argc, char **argv, char **envp)
 	hstlast=0;
 	freshall();
 	write_log("I'm, qcc-%s, successfully started! ;)", version );
+	paint_ui();
 	while(!quitflag) {
 #ifdef CURS_HAVE_RESIZETERM
 		if (sizechanged) {
@@ -1529,14 +1578,11 @@ int main(int argc, char **argv, char **envp)
  		}
 #endif
 		tim=time(NULL);
-		tt=localtime(&tim);wattron(whdr,COLOR_PAIR(15));
+		tt=localtime(&tim);
+		if (use_color)
+			wattron(whdr,COLOR_PAIR(15));
 		mvwprintw(whdr,0,COL-11,"%02d:%02d:%02d",tt->tm_hour,tt->tm_min,tt->tm_sec);
-		wnoutrefresh(whdr);wnoutrefresh(wstat);
-		if(currslot>0&&slots[currslot]->chat) {
-			wmove(slots[currslot]->wlog,slots[currslot]->chaty,slots[currslot]->chatx);
-			wnoutrefresh(slots[currslot]->wlog);
-		}
-		doupdate();
+		paint_ui();
 		FD_ZERO(&rfds);
 		FD_SET(0,&rfds);
 		FD_SET(sock,&rfds);
@@ -1548,7 +1594,6 @@ int main(int argc, char **argv, char **envp)
 			ch=getmessages(NULL);
 			if(ch<0)quitflag=1;
 		} while(ch>0);
-		if(rc>0&&FD_ISSET(0,&rfds)) {
 		ch=getch_ready();
 		if(ch==ERR)continue;
 #ifdef KEY_RESIZE
@@ -1786,7 +1831,7 @@ int main(int argc, char **argv, char **envp)
 				} else xbeep();
 				break;
 		    }
-		}}
+		}
 	    }
 	}
 	while(allslots)delslot(allslots-1);
