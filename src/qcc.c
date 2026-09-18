@@ -343,7 +343,9 @@ static void initscreen(void)
 	initscr();start_color();
 	cbreak();noecho();nonl();
 	nodelay(stdscr,TRUE);
-	keypad(stdscr,TRUE);
+	/* Keys are read(2) from stdin in getch_ready(); keypad() would
+	 * steal ESC sequences and can still block on native BSD curses. */
+	keypad(stdscr,FALSE);
 	leaveok(stdscr,FALSE);
 	if(LINES<MH*2)MH=LINES/2-1;
 	init_pair(1,COLOR_BLUE,COLOR_BLACK);
@@ -377,14 +379,6 @@ static void initscreen(void)
 	wbkgd(whelp,COLOR_PAIR(8)|' ');
 	whdr=newwin(1,COL-2,0,2);
 	wbkgd(whdr,COLOR_PAIR(13)|A_BOLD|' ');
-	/*
-	 * Keyboard input is read with wgetch(whelp), not getch()/stdscr.
-	 * wgetch refreshes its window; stdscr only holds the frame, so a
-	 * blocking getch() left qcc showing an empty box on BSD curses.
-	 */
-	keypad(whelp, TRUE);
-	nodelay(whelp, TRUE);
-	notimeout(whelp, TRUE);
 	wrefresh(wmain);
 	wrefresh(wstat);
 	wrefresh(whdr);
@@ -694,20 +688,129 @@ static void delslot(int slt)
 }
 
 /*
+ * Wait up to ms milliseconds for stdin to become readable.
+ * Used only to finish an ESC sequence; the caller already waited in select().
+ */
+static int stdin_wait_ms(int ms)
+{
+	fd_set rfds;
+	struct timeval tv;
+
+	FD_ZERO(&rfds);
+	FD_SET(0, &rfds);
+	tv.tv_sec = 0;
+	tv.tv_usec = ms * 1000;
+	return (select(1, &rfds, NULL, NULL, &tv) > 0);
+}
+
+static int stdin_getc(void)
+{
+	unsigned char c;
+	ssize_t n = read(0, &c, 1);
+
+	if (n == 1)
+		return (int)c;
+	return ERR;
+}
+
+/*
+ * Finish CSI (ESC [ ...) after the '[' byte was consumed.
+ * Maps the keys qcc actually uses: arrows, Home/End, PgUp/PgDn, Delete, F1–F10.
+ */
+static int decode_bracket_seq(void)
+{
+	char seq[16];
+	int n = 0, c, i, num;
+
+	while (n < 15) {
+		if (!stdin_wait_ms(80))
+			break;
+		c = stdin_getc();
+		if (c == ERR)
+			break;
+		seq[n++] = (char)c;
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '~')
+			break;
+	}
+	if (n == 0)
+		return 0x1b;
+	c = seq[n - 1];
+	if (c == 'A') return KEY_UP;
+	if (c == 'B') return KEY_DOWN;
+	if (c == 'C') return KEY_RIGHT;
+	if (c == 'D') return KEY_LEFT;
+	if (c == 'H') return KEY_HOME;
+	if (c == 'F') return KEY_END;
+	if (c == '~') {
+		num = 0;
+		for (i = 0; i < n - 1; i++) {
+			if (seq[i] >= '0' && seq[i] <= '9')
+				num = num * 10 + (seq[i] - '0');
+			else if (seq[i] == ';')
+				break;
+		}
+		switch (num) {
+		case 1:  return KEY_HOME;
+		case 3:  return KEY_DC;
+		case 4:  return KEY_END;
+		case 5:  return KEY_PPAGE;
+		case 6:  return KEY_NPAGE;
+		case 11: return KEY_F(1);
+		case 12: return KEY_F(2);
+		case 13: return KEY_F(3);
+		case 14: return KEY_F(4);
+		case 15: return KEY_F(5);
+		case 17: return KEY_F(6);
+		case 18: return KEY_F(7);
+		case 19: return KEY_F(8);
+		case 20: return KEY_F(9);
+		case 21: return KEY_F(10);
+		default: return ERR;
+		}
+	}
+	return ERR;
+}
+
+/*
  * Read one key after select() reported fd 0 readable.
  *
- * Native BSD curses can ignore nodelay() while keypad() waits for the
- * rest of an ESC sequence, and wgetch(stdscr) would refresh only the
- * frame over the subwindows. notimeout() forbids that extra wait;
- * wgetch(whelp) refreshes the help line only. Do not use timeout(n>0)
- * here: it did not cap the keypad wait on NetBSD and froze the UI.
- * Do not follow ESC with a second getch().
+ * Do not call wgetch()/getch() here. Native BSD curses can block inside
+ * keypad() despite nodelay/notimeout, and wgetch(stdscr) redraws only the
+ * frame. Bytes come from read(2); ESC sequences are mapped to the same
+ * KEY_* values the rest of qcc already switches on.
  */
 static int getch_ready(void)
 {
-	nodelay(whelp, TRUE);
-	notimeout(whelp, TRUE);
-	return wgetch(whelp);
+	int c = stdin_getc();
+
+	if (c == ERR)
+		return ERR;
+	if (c == 8 || c == 127)
+		return KEY_BACKSPACE;
+	if (c != 0x1b)
+		return c;
+	if (!stdin_wait_ms(80))
+		return 0x1b;
+	c = stdin_getc();
+	if (c == ERR)
+		return 0x1b;
+	if (c == '[')
+		return decode_bracket_seq();
+	if (c == 'O') {
+		if (!stdin_wait_ms(80))
+			return 0x1b;
+		c = stdin_getc();
+		switch (c) {
+		case 'P': return KEY_F(1);
+		case 'Q': return KEY_F(2);
+		case 'R': return KEY_F(3);
+		case 'S': return KEY_F(4);
+		case 'H': return KEY_HOME;
+		case 'F': return KEY_END;
+		default:  return ERR;
+		}
+	}
+	return c;
 }
 
 static int inputstr(char *str, char *name, int mode)

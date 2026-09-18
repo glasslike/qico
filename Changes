@@ -1,8 +1,7 @@
 Unreleased
 ~~~~~~~~~~
-- qcc: do not block forever in getch() on native BSD curses (keep select
-  on stdin; wgetch on the help line with notimeout; drop the second
-  getch after ESC).
+- qcc: read keys with select/read, not wgetch, so native BSD curses
+  cannot freeze the UI on ESC/keypad.
 
 
 Version 0.60.0
