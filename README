@@ -141,11 +141,11 @@ Notes
 
 Versioning
 ~~~~~~~~~~
-Git tags (v0.59.1, …) are releases. A build from a tag reports that
+Git tags (v0.60.0, …) are releases. A build from a tag reports that
 version with no suffix.
 
 master is unreleased: the version string is the next likely number
-plus -dev (currently 0.60.0-dev). That number is not a promise; the
+plus -dev (currently 0.60.1-dev). That number is not a promise; the
 next tag may skip it (for example 0.61.0). Pending notes live in
 Changes under Unreleased until a release commit moves them into a
 Version x.y.z block and drops -dev.
