@@ -685,6 +685,35 @@ static void delslot(int slt)
 	freshall();
 }
 
+/*
+ * How long keypad() may wait for the rest of an ESC sequence (CSI arrows)
+ * after select() said stdin is readable. ncurses already returns quickly
+ * under nodelay(); native BSD curses can ignore nodelay and block forever
+ * inside getch(). 100 ms is enough to assemble a local/SSH burst, and
+ * short enough that a lone ESC cannot freeze the UI.
+ */
+#ifndef KEY_GATHER_MS
+#define KEY_GATHER_MS 100
+#endif
+
+/*
+ * Read one key after select() reported fd 0 readable.
+ *
+ * Restore nodelay() afterwards so the rest of qcc (and the next idle
+ * loop) keeps the original non-blocking policy. Do not follow ESC with
+ * a second getch(): that extra read is what hung qcc on NetBSD libcurses,
+ * and with keypad() the first getch() already returns KEY_LEFT / KEY_F(n).
+ */
+static int getch_ready(void)
+{
+	int ch;
+
+	timeout(KEY_GATHER_MS);
+	ch = getch();
+	nodelay(stdscr, TRUE);
+	return ch;
+}
+
 static int inputstr(char *str, char *name, int mode)
 {
 	WINDOW *iw;
@@ -705,7 +734,33 @@ static int inputstr(char *str, char *name, int mode)
 	mvwaddch(iw,0,1,' ');waddstr(iw,name);
 	wnoutrefresh(iw);doupdate();
 	while(!getkey&&!quitflag) {
-		ch=getch();fr=0;
+		fr=0;
+		/*
+		 * Same wait shape as the main loop: select() for a short tick
+		 * (stdin + qico socket), then getch_ready() only if a key is
+		 * pending. A bare getch() here used to block on BSD curses.
+		 */
+		FD_ZERO(&rfds);
+		FD_SET(0,&rfds);
+		if(sock>=0)
+			FD_SET(sock,&rfds);
+		tv.tv_sec=0;
+		tv.tv_usec=5000;
+		select((sock>=0?sock:0)+1,&rfds,NULL,NULL,&tv);
+		if(sock>=0&&FD_ISSET(sock,&rfds))
+			while(getmessages(NULL)>0);
+		tim=time(NULL);tt=localtime(&tim);
+		wattron(whdr,COLOR_PAIR(15));
+		mvwprintw(whdr,0,COL-11,"%02d:%02d:%02d",tt->tm_hour,tt->tm_min,tt->tm_sec);
+		wnoutrefresh(whdr);
+		wmove(iw,1,cp+1);
+		wnoutrefresh(iw);
+		doupdate();
+		if(!FD_ISSET(0,&rfds))
+			continue;
+		ch=getch_ready();
+		if(ch==ERR)
+			continue;
 		if(ch>=32&&ch<255) {
 			if(sl>=(mode?(mode==1?40:5):(MAX_STRING-2))||(mode&&!strchr(mode==1?"icdhny:/.@1234567890 ":"1234567890",ch))){xbeep();}
 			    else {
@@ -890,17 +945,7 @@ static int inputstr(char *str, char *name, int mode)
 				bp=sp=cp=sl=0;
 				break;
 			default:
-				while(getmessages(NULL)>0);
-				tim=time(NULL);tt=localtime(&tim);
-				wattron(whdr,COLOR_PAIR(15));
-				mvwprintw(whdr,0,COL-11,"%02d:%02d:%02d",tt->tm_hour,tt->tm_min,tt->tm_sec);
-				wnoutrefresh(whdr);
-				wmove(iw,1,cp+1);
-				wnoutrefresh(iw);
-				doupdate();
-				FD_ZERO(&rfds);FD_SET(0,&rfds);
-				tv.tv_sec=0;tv.tv_usec=5000;
-				select(1,&rfds,NULL,NULL,&tv);
+				/* Unknown key; clock and server events are polled above. */
 				break;
 		}
 		str[sl]=0;
@@ -1405,8 +1450,7 @@ int main(int argc, char **argv, char **envp)
 			if(ch<0)quitflag=1;
 		} while(ch>0);
 		if(rc>0&&FD_ISSET(0,&rfds)) {
-		ch=getch();
-		if(ch==0x1b)ch=getch();
+		ch=getch_ready();
 		if(ch==ERR)continue;
 #ifdef KEY_RESIZE
 		if(ch==KEY_RESIZE)continue;
