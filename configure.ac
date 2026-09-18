@@ -26,6 +26,10 @@ AC_CHECK_HEADERS([netdb.h netinet/in.h sgtty.h stddef.h stdlib.h])
 AC_CHECK_HEADERS([string.h sys/fs/s5param.h sys/ioctl.h sys/param.h])
 AC_CHECK_HEADERS([sys/socket.h sys/statfs.h sys/statvfs.h sys/time.h])
 AC_CHECK_HEADERS([sys/vfs.h syslog.h termio.h termios.h unistd.h utime.h])
+dnl BSD / glibc ship default c_cc values (CQUIT, CKILL, CEOF, ...) in
+dnl <sys/ttydefaults.h>. musl does not. Detect the header; tty.c supplies
+dnl POSIX CTRL() fallbacks when the macros are missing. No OS-name ifdefs.
+AC_CHECK_HEADERS([sys/ttydefaults.h])
 
 
 dnl Checks for library functions.
@@ -74,9 +78,24 @@ AC_CHECK_SIZEOF([char],[1])
 AC_CHECK_SIZEOF([short],[2])
 AC_CHECK_SIZEOF([int],[4])
 AC_CHECK_SIZEOF([long],[4])
+dnl socklen_t is a POSIX socket type; it is declared in <sys/socket.h>
+dnl (and historically sometimes only there, as on musl). Default
+dnl AC_CHECK_TYPE includes do not pull that header, so the test reports
+dnl "no" even when the type exists. The fallback #define socklen_t then
+dnl expands inside the real typedef and GCC reports "duplicate 'unsigned'".
+dnl Include the socket headers in the feature test; do not special-case OS names.
 AC_CHECK_TYPE([socklen_t],
-	,
-	AC_DEFINE(socklen_t,[unsigned int],[Define to `unsigned int' if <sys/types.h> does not define it]))
+	[],
+	[AC_DEFINE([socklen_t],[unsigned int],
+		[Define to `unsigned int' if <sys/socket.h> does not define it.])],
+	[
+#ifdef HAVE_SYS_TYPES_H
+# include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_SOCKET_H
+# include <sys/socket.h>
+#endif
+	])
 
 
 AC_CHECK_MEMBER([struct statfs.f_bavail],[AC_DEFINE(STATFS_HAVE_F_BAVAIL,1,[Define to 1 if 'struct statfs' has 'f_bavail' field])],,[#include <sys/statfs.h>])
@@ -563,10 +582,38 @@ if test "${enable_perl}x" != "nox"; then
 int main(int argc, char** argv, char** env) {
 return perl_alloc() ? 0 : 1;
 }],
+		    [
 		    AC_DEFINE(WITH_PERL,1,[Support for perl hooks])
 		    PERL_O='perl.$(OBJEXT)'
-		    AC_MSG_RESULT(yes),AC_MSG_RESULT(no),AC_MSG_RESULT(no))
-		    CFLAGS=$OLD_CFLAGS; LIBS=$OLD_LIBS
+		    AC_MSG_RESULT(yes)
+		    dnl perl_parse() takes an XSINIT_t callback. Historic Perl
+		    dnl typed that as void (*)(void); current libperl with
+		    dnl PERL_IMPLICIT_CONTEXT types it as void (*)(pTHX)
+		    dnl (a PerlInterpreter *). GCC 14+ treats a mismatch as
+		    dnl an error (-Wincompatible-pointer-types). Probe the
+		    dnl real callback type while PERLCFLAGS are still in
+		    dnl CFLAGS. Do not key off OS names or Perl version
+		    dnl numbers.
+		    AC_MSG_CHECKING([whether perl XSINIT_t takes a Perl interpreter])
+		    AC_TRY_COMPILE([
+#include <EXTERN.h>
+#include <perl.h>
+#include <XSUB.h>
+static void xs_init_pthx(pTHX)
+{
+	(void)aTHX;
+}
+], [
+XSINIT_t cb = xs_init_pthx;
+(void)cb;
+],
+			[AC_DEFINE(HAVE_PERL_XSINIT_PTHX,1,
+				[Define to 1 if perl_parse XSINIT_t takes pTHX])
+			 AC_MSG_RESULT(yes)],
+			[AC_MSG_RESULT(no)])
+		    ],AC_MSG_RESULT(no),AC_MSG_RESULT(no))
+		    CFLAGS=$OLD_CFLAGS
+		    LIBS=$OLD_LIBS
 		    ;;
 	esac
 else
@@ -667,6 +714,43 @@ dnl definition errors for common globals.
 CFLAGS="$CFLAGS -Wall -fcommon"
 if test "x$USE_MAINTAINER_MODE" = "xyes"; then
     CFLAGS="$CFLAGS -pedantic -Wcast-qual -Wcast-align -Wwrite-strings -Wconversion -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls"
+fi
+
+dnl If libperl's ExtUtils::Embed ccopts/ldopts ask for PIE, compile the
+dnl whole program as PIE. perl.o already gets PERLCFLAGS (which may
+dnl enable PIE only via a compiler spec file, without spelling -fPIE
+dnl on the command line). The rest of qico does not, and a PIE-only
+dnl link then fails with R_X86_64_32 against .rodata. Inspect the
+dnl embed flags themselves. A tiny compile+link probe is not enough:
+dnl GCC may emit RIP-relative relocs for small tests while larger
+dnl qico translation units still emit absolute 32-bit relocs.
+dnl Do not key off OS names.
+if test "x$PERL_O" != x; then
+	AC_MSG_CHECKING([whether perl embed flags require -fPIE])
+	qico_perl_need_pie=no
+	for qico_perl_flag in $PERLCFLAGS $PERLLDFLAGS; do
+		case $qico_perl_flag in
+			-fPIE|-fpie|-pie)
+				qico_perl_need_pie=yes
+				;;
+			-specs=*)
+				case $qico_perl_flag in
+					*hardened-cc1*|*hardened-ld*)
+						qico_perl_need_pie=yes
+						;;
+				esac
+				;;
+		esac
+	done
+	if test "x$qico_perl_need_pie" = xyes; then
+		case " $CFLAGS " in
+			*" -fPIE "*|*" -fpie "*) ;;
+			*) CFLAGS="$CFLAGS -fPIE" ;;
+		esac
+		AC_MSG_RESULT(yes)
+	else
+		AC_MSG_RESULT(no)
+	fi
 fi
 
 

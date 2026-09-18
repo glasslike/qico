@@ -1337,7 +1337,13 @@ static int ndl_compile(void)
 				lasteq = k + 1;
 				k++;
 			} else if ( firsteq >= 0 ) {
-				memcpy( &ies[firsteq + 1], &ies[lasteq + 1],
+				/*
+				 * Compact the sorted index by sliding later entries
+				 * over a duplicate run. dest and src are in the same
+				 * array and overlap; memcpy() is undefined (see
+				 * MD5_memcpy → memmove in md5q.c and xrecv in clserv.c).
+				 */
+				memmove( &ies[firsteq + 1], &ies[lasteq + 1],
 					sizeof( *ies ) * (total - lasteq - 1));
 				firsteq = lasteq = -1;
 				deleted++;

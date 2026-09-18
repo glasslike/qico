@@ -255,7 +255,13 @@ static void answer_mode(int type)
     tty_fd = 0;
     tty_online = TRUE;
     if( is_ip && getpeername( 0, (struct sockaddr*) &sa, &ss ) == 0 ) {
-        get_hostname( &sa, ss, host, sizeof( host ));
+        /*
+         * sockaddr_storage is the portable container for any AF; POSIX
+         * socket APIs take struct sockaddr *. Cast at the call site
+         * (same as getpeername above) so GCC 14+ -Wincompatible-pointer-types
+         * does not fail the build. Do not use OS-name ifdefs here.
+         */
+        get_hostname( (struct sockaddr *) &sa, ss, host, sizeof( host ));
         write_log( "remote is %s", host );
         spd = TCP_SPEED;
         tcp_setsockopts( tty_fd );

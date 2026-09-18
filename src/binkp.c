@@ -1542,9 +1542,22 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 
 		if ( bps->sent_eob && bps->recv_eob ) {
 			DEBUG(('B',4,"mib=%d", bps->mib));
+			/* Binkp/1.0, or an empty batch (fewer than 3 msgs): the
+			 * session is finished. A non-empty binkp/1.1 batch with
+			 * MB means we must start another batch — possibly empty,
+			 * which is how both sides agree there is nothing more.
+			 *
+			 * After resetting the EOB flags we must NOT fall into
+			 * select(). The send-EOB test already ran this iteration
+			 * while sent_eob was still 1, so we would sit idle for
+			 * BP_TIMEOUT (300s) waiting for the remote, who is doing
+			 * the same thing (qico-vs-qico hang after GOT). Continue
+			 * so the next iteration sends M_EOB if oflist is empty.
+			 */
 			if ( bps->mib < 3 || BP_VER( bps ) <= 100 )
 				break;
 			bps->mib = bps->sent_eob = bps->recv_eob = 0;
+			continue;
 		}
 
 		wd = ( bps->nmsgs || bps->tx_left || ( bps->send_file && txfd && !bps->wait_for_get));

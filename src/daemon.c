@@ -44,12 +44,20 @@
  *
  */
 
+/*
+ * Feature-test macros must be set before any libc header. The configure
+ * DNOTIFY probe compiles with _GNU_SOURCE so that F_NOTIFY, DN_* and
+ * SIGRTMIN are visible (glibc and musl both hide some of them otherwise).
+ * Keep the same environment for this translation unit; do not undef the
+ * macro after the first includes, and do not key off an OS name.
+ */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <config.h>
 #ifdef HAVE_DNOTIFY
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <fcntl.h>
-#undef _GNU_SOURCE
 #endif
 #include "headers.h"
 #ifdef HAVE_SYS_SOCKET_H
@@ -66,6 +74,16 @@
 #include "clserv.h"
 #include "nodelist.h"
 
+/*
+ * Compile-time AND of the configure dnotify result and SIGRTMIN itself.
+ * Alpine/musl can pass the runtime kernel probe while still hiding SIGRTMIN
+ * unless _GNU_SOURCE is in force; this keeps the build portable if either
+ * piece is missing.
+ */
+#if defined(HAVE_DNOTIFY) && defined(SIGRTMIN)
+#define USE_DNOTIFY 1
+#endif
+
 static short tosend=0;
 static cls_cl_t *cl = NULL;
 static cls_ln_t *ln = NULL;
@@ -74,14 +92,14 @@ static volatile int c_delay;
 static volatile int rnum;
 static volatile int reread_config = 0;
 
-#ifdef HAVE_DNOTIFY
+#ifdef USE_DNOTIFY
 static int dnot;
 #endif
 
 
 static void stop_daemon(void)
 {
-#ifdef HAVE_DNOTIFY
+#ifdef USE_DNOTIFY
 	if ( dnot > 0 )
 		close( dnot );
 #endif
@@ -143,7 +161,7 @@ static RETSIGTYPE sigterm(int sig)
 }
 
 
-#ifdef HAVE_DNOTIFY
+#ifdef USE_DNOTIFY
 static RETSIGTYPE sigrt(int sig)
 {
 	DEBUG(('Q',3,"got SIGRT"));
@@ -555,7 +573,7 @@ void daemon_mode()
 	to_dev_null();setsid();
 	write_log("%s-%s/%s daemon started",progname,version,osname);
 	IFPerl(perl_init(cfgs(CFG_PERLFILE),1));
-#ifdef HAVE_DNOTIFY
+#ifdef USE_DNOTIFY
 	if ( rc & ASO ) {
 		dnot = open( cfgs( CFG_ASOOUTBOUND ),O_RDONLY );
 		if ( dnot < 0 ) {
@@ -669,7 +687,7 @@ void daemon_mode()
 					chld=fork();
 					if(!chld) {
 						setsid();
-#ifdef HAVE_DNOTIFY
+#ifdef USE_DNOTIFY
 						signal(SIGRTMIN,SIG_IGN);
 #endif
 						if(!outbound_locknode(&current->addr,LCK_c))exit(S_BUSY);

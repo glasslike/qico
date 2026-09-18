@@ -938,7 +938,12 @@ step4:
 					rew = strstr( emsi_dat + 1, EMSI_BEG );
 					if ( rew && rew != emsi_dat ) {
 						DEBUG(('E',1,"got EMSI_DAT at offset %d", p - rew));
-						memcpy( emsi_dat, rew, p - rew );
+						/*
+						 * rew points inside emsi_dat; this is an in-place
+						 * slide of the tail. Same overlap as xrecv() —
+						 * memcpy() is undefined, memmove() is required.
+						 */
+						memmove( emsi_dat, rew, p - rew );
 						p -= rew - emsi_dat;
 					} else {
 						p = emsi_dat;

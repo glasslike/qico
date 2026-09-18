@@ -75,8 +75,22 @@ int cls_conn(int type, const char *port, const char *addr)
 			DEBUG(('I',1,"cls_conn: unknown address: %s", addr));
 			return -1;
 		}
-	} else
-		sa.sin_addr.s_addr = htonl(( type & CLS_UDP ) ? INADDR_LOOPBACK : INADDR_ANY );
+	} else if ( ( type & CLS_SERVER ) && !( type & CLS_UDP ) )
+		/*
+		 * TCP daemon: listen on every interface so `qctl -a host`
+		 * can reach it. UDP stays on loopback (local IPC only).
+		 */
+		sa.sin_addr.s_addr = htonl( INADDR_ANY );
+	else
+		/*
+		 * TCP client (qctl/qcc) and all UDP sockets: loopback.
+		 * The old ternary used INADDR_ANY for every non-UDP socket,
+		 * so a client without -a called connect(0.0.0.0). That can
+		 * reach localhost on glibc but is unspecified; musl has
+		 * returned ECONNREFUSED, and the live-test then printed
+		 * "can't connect to server".
+		 */
+		sa.sin_addr.s_addr = htonl( INADDR_LOOPBACK );
 
 	rc = socket( AF_INET, type & CLS_UDP ? SOCK_DGRAM : SOCK_STREAM, 0 );
     	if ( rc < 0 ) {
@@ -155,7 +169,15 @@ int xsendto(int sock, const char *buf, size_t len, struct sockaddr *to)
 	b = xmalloc( len + 2 );
 	STORE16( b, l );
 	memcpy( b + 2, buf, len );
-	rc = sendto( sock, b, len + 2, 0, to, sizeof( struct sockaddr ));
+	/*
+	 * xsend() passes to=NULL for a connected TCP socket. POSIX sendto()
+	 * with a NULL address and a non-zero tolen is unspecified; use send()
+	 * on that path so musl does not see a NULL sockaddr.
+	 */
+	if ( to )
+		rc = sendto( sock, b, len + 2, 0, to, sizeof( struct sockaddr ));
+	else
+		rc = send( sock, b, len + 2, 0 );
 	xfree( b );
 	return rc;
 }
@@ -207,7 +229,10 @@ int xrecv(int sock, char *buf, size_t len, int wait)
 		if ( rc < 1 )
 			return 0;
 		if ( rc >= len ) rc = len - 2;
-		memcpy( buf, buf + 2, rc );
+		/* Drop the 2-byte length prefix in place. src and dest overlap,
+		 * so memcpy() is undefined and Alpine/musl FORTIFY traps it with
+		 * ud2 (SIGILL / exit 132) inside xrecv.cold. memmove() is required. */
+		memmove( buf, buf + 2, rc );
 		return rc;
 	}
 	return 0;

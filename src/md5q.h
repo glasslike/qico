@@ -45,11 +45,18 @@ documentation and/or software.
 /* PROTOTYPES should be set to one if and only if the compiler supports
   function argument prototyping.
 
-  The following makes PROTOTYPES default to 0 if it has not already
-  been defined with C compiler flags.
+  Default to 1 on any ISO C compiler (__STDC__). RSAREF originally
+  defaulted this to 0, which expands PROTO_LIST to an empty () list.
+  Since C23, `void f()` means "no arguments" (not "unspecified"), so
+  GCC 15+ / Fedora reject MD5Transform(state, block) against that
+  declaration. Pre-ANSI compilers still get the old empty list.
  */
 #ifndef PROTOTYPES
-#define PROTOTYPES 0
+# ifdef __STDC__
+#  define PROTOTYPES 1
+# else
+#  define PROTOTYPES 0
+# endif
 #endif
 
 /* POINTER defines a generic pointer type */

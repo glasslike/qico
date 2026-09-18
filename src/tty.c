@@ -1094,6 +1094,61 @@ void tio_raw_mode(TIO * t)
  * do /not/ initialize VERASE and VINTR, since some systems use
  * ^H / DEL here, others DEL / ^C.
  */
+/*
+ * Default c_cc values (CQUIT, CKILL, CEOF, ...) come from
+ * <sys/ttydefaults.h> on BSD and glibc. musl and some other libcs
+ * omit that header. Include it when configure found it, then supply
+ * POSIX CTRL() fallbacks for any still-missing macros. Feature-test
+ * the macros themselves; do not branch on OS names.
+ */
+#ifdef HAVE_SYS_TTYDEFAULTS_H
+#include <sys/ttydefaults.h>
+#endif
+
+#ifndef CTRL
+#define CTRL(c) ((c) & 037)
+#endif
+#ifndef CQUIT
+#define CQUIT CTRL('\\')	/* FS, typically 034 */
+#endif
+#ifndef CKILL
+#define CKILL CTRL('U')
+#endif
+#ifndef CEOF
+#define CEOF CTRL('D')
+#endif
+#ifndef CEOL
+#define CEOL '\0'
+#endif
+#ifndef CSTART
+#define CSTART CTRL('Q')
+#endif
+#ifndef CSTOP
+#define CSTOP CTRL('S')
+#endif
+#ifndef CSUSP
+#define CSUSP CTRL('Z')
+#endif
+#ifndef CSWTCH
+#define CSWTCH CTRL('Z')
+#endif
+#ifndef CDSUSP
+#define CDSUSP CTRL('Y')
+#endif
+#ifndef CRPRNT
+#define CRPRNT CTRL('R')
+#endif
+#ifndef CFLUSH
+#define CFLUSH CTRL('O')
+#endif
+#ifndef CWERASE
+#define CWERASE CTRL('W')
+#endif
+#ifndef CLNEXT
+#define CLNEXT CTRL('V')
+#endif
+
+
 void tio_default_cc(TIO *t)
 {
 #ifdef BSD_SGTTY

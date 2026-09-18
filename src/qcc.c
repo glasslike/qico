@@ -1198,7 +1198,13 @@ static int getmessages(char *bbx)
 					    xstrcpy(slots[rc]->cl,(char*)p,MH*CHH-1);
 					else slots[rc]->chats++;
 				} else if(strlen(slots[rc]->cl)>=(MH*(CHH-1))) {
-					memcpy(slots[rc]->cl,slots[rc]->cl+CHH,strlen(slots[rc]->cl)-(CHH-2));
+					/*
+					 * Drop the oldest chat line by sliding the rest down in
+					 * the same buffer. dest and src overlap; same class of
+					 * bug as xrecv() / RSAREF MD5_memcpy (those already use
+					 * memmove). memcpy() is undefined here.
+					 */
+					memmove(slots[rc]->cl,slots[rc]->cl+CHH,strlen(slots[rc]->cl)-(CHH-2));
 					slots[rc]->chats=MH;
 				}
 				break;

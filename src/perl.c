@@ -175,9 +175,24 @@ static XS(perl_qexpr)
 	XSRETURN_IV(rc);
 }
 
+/*
+ * perl_parse() wants an XSINIT_t callback. Configure probes whether
+ * that type is void (*)(pTHX) (PerlInterpreter * under
+ * PERL_IMPLICIT_CONTEXT) or the older void (*)(void). Match the
+ * probed signature so GCC 14+ -Wincompatible-pointer-types stays
+ * clean. Do not branch on OS names or Perl version macros.
+ */
+#ifdef HAVE_PERL_XSINIT_PTHX
+static void perl_xs_init(pTHX)
+#else
 static void perl_xs_init(void)
+#endif
 {
 	static char *file=__FILE__;
+#ifdef HAVE_PERL_XSINIT_PTHX
+	/* pTHX declares my_perl; the XS bootstrap does not use it directly. */
+	(void)aTHX;
+#endif
 	newXS("wlog",perl_wlog,file);
 	newXS("setflag",perl_setflag,file);
 	newXS("qexpr",perl_qexpr,file);
