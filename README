@@ -30,10 +30,10 @@ Features
 Building & Installation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Debian 12:
-https://github.com/glasslike/qico/blob/master/DEBIAN12.md
+Debian 12, modern toolchain:
+https://github.com/glasslike/qico/blob/master/BUILD.md
 
-systemd units (enable qico.target):
+Systemd units (enable qico.target):
 https://github.com/glasslike/qico/blob/master/systemd/README.md
 
 Config put in the right place and customize it to fit your needs.
