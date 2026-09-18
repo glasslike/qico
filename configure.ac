@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT([qico],[0.60.0-dev],[jame at rocasa dot us])
+AC_INIT([qico],[0.60.0],[jame at rocasa dot us])
 AC_PREREQ(2.53)
 AC_CONFIG_SRCDIR([src/main.c])
 AM_CONFIG_HEADER([config.h])

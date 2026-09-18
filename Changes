@@ -1,5 +1,5 @@
-Unreleased
-~~~~~~~~~~
+Version 0.60.0
+~~~~~~~~~~~~~~
 - new keyword: `share` <shared-aka> <member1> [member2 ...]
   Binkd-compatible shared AKA for netmail failover.
 - new keyword: `rootdomain` <dns-suffix>
