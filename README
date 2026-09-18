@@ -151,6 +151,16 @@ Changes under Unreleased until a release commit moves them into a
 Version x.y.z block and drops -dev.
 
 
+Other forks
+~~~~~~~~~~~
+Useful fixes from other public qico forks were reviewed and applied
+here to fit this tree, not merged wholesale:
+https://github.com/askovpen/qico
+https://github.com/evs38/qico
+https://github.com/leenooks/qico
+https://github.com/uncleeugene/qico
+
+
 Authors / Maintainers
 ~~~~~~~~~~~~~~~~~~~~~
 Pavel Kurnosoff, 2:5030/736.25, pqr@yasp.com, icq 45906870 (up to 0.45pl3.1)
