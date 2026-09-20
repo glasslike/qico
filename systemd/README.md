@@ -11,7 +11,7 @@ Unit files in this directory are for Debian / Raspberry Pi OS (`systemd`).
 | `qico-ifc.socket` | Listen TCP **60179** |
 | `qico-ifc@.service` | Per-connection ifcico answer (`qico -aauto`) — do not enable directly |
 
-Paths baked into the units:
+Sample paths baked into the units (do not forget to fix them according to your system):
 
 | Role | Path |
 |------|------|
@@ -20,9 +20,6 @@ Paths baked into the units:
 | Spool | `/home/map/ftn/fido` |
 
 ## Production install
-
-Stop **binkd** first so TCP 24554 is free. Port 60179 must also be free
-(no leftover ifcico/inetd listener).
 
 ```bash
 sudo cp systemd/qico.target \
@@ -35,10 +32,6 @@ sudo cp systemd/qico.target \
 sudo systemctl daemon-reload
 sudo systemctl enable --now qico.target
 ```
-
-To keep **binkd** as the boot default, do not enable the target.
-Stop binkd first, then `systemctl start qico.target` (all three roles).
-`systemctl stop qico.target` frees 24554 and 60179 again.
 
 Verify:
 
@@ -62,12 +55,11 @@ sudo journalctl -u qico -u 'qico-binkp@*' -u 'qico-ifc@*' -f
 ## UI / control (after the target is up)
 
 ```bash
-/home/map/ftn/usr/bin/qcc -P 60178 -w 'your-serverpwd'
-/home/map/ftn/usr/bin/qctl -P 60178 -w 'your-serverpwd' -o
+qcc -P 60178 -w 'your-serverpwd'
+qctl -P 60178 -w 'your-serverpwd' -o
 ```
 
-Port and password come from `server` / `serverpwd` in
-`/home/map/ftn/usr/etc/qico/qico.conf` (UI control, not session passwords).
+Port and password come from `server` / `serverpwd` in `qico.conf` (UI control, not session passwords).
 
 ## Design notes
 
