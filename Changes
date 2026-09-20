@@ -1,5 +1,8 @@
 Unreleased
 ~~~~~~~~~~
+- systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
+  `qico-ifc@.service`). `qico.target` starts it with the originate
+  daemon and BinkP (24554).
 
 
 Version 0.60.0

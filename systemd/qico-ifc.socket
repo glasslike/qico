@@ -1,0 +1,29 @@
+# qico-ifc.socket — inbound ifcico listener (TCP 60179)
+#
+# Same pattern as qico-binkp.socket: the queue daemon (qico -f) does NOT
+# listen on 60179. systemd accepts the TCP connection and starts
+# qico-ifc@.service (inetd-style: qico -aauto with the fd on stdin/stdout).
+#
+# Part of qico.target. Independent of BinkP on 24554 — both can run.
+# Make sure nothing else (old ifcico, inetd) already binds 60179.
+#
+# Classic inetd equivalent (upstream FAQ):
+#   ifc  stream  tcp  nowait  map  /home/map/ftn/usr/bin/qico  qico -a auto
+
+[Unit]
+Description=qico ifcico inbound socket (TCP 60179)
+Documentation=man:qico(8)
+PartOf=qico.target
+After=network-online.target
+Wants=network-online.target
+
+[Socket]
+# Standard ifcico port (FTS-5001 IFC default / etc/services name "ifc")
+ListenStream=60179
+# One answer process per accepted connection → qico-ifc@*.service
+Accept=yes
+# Optional: bind only IPv4 (uncomment if needed)
+# BindIPv4Only=yes
+
+[Install]
+WantedBy=qico.target

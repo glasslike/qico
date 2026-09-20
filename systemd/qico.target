@@ -1,15 +1,19 @@
-# qico.target — start/stop outbound daemon + inbound BinkP together
+# qico.target — start/stop outbound daemon + inbound BinkP/ifcico together
 #
 # Production layout (user map, paths under /home/map/ftn):
 #   qico.target
 #     ├─ qico.service           queue / originate (qico -f)
-#     └─ qico-binkp.socket      listen TCP 24554 → qico-binkp@.service
+#     ├─ qico-binkp.socket      listen TCP 24554 → qico-binkp@.service
+#     └─ qico-ifc.socket        listen TCP 60179 → qico-ifc@.service
 #
-# Install (as root), with binkd stopped so port 24554 is free:
+# Install (as root), with binkd stopped so port 24554 is free, and
+# nothing else bound to 60179:
 #   cp systemd/qico.target \
 #      systemd/qico.service \
 #      systemd/qico-binkp.socket \
 #      systemd/qico-binkp@.service \
+#      systemd/qico-ifc.socket \
+#      systemd/qico-ifc@.service \
 #      /etc/systemd/system/
 #   # Do NOT install qico.service.d/lab-user.conf on production
 #   systemctl daemon-reload
@@ -18,17 +22,17 @@
 # Everyday:
 #   systemctl start|stop|restart|status qico.target
 #   systemctl reload qico.service          # SIGHUP config reread
-#   journalctl -u qico -u 'qico-binkp@*' -f
+#   journalctl -u qico -u 'qico-binkp@*' -u 'qico-ifc@*' -f
 
 [Unit]
-Description=qico FTN mailer (daemon + BinkP inbound)
+Description=qico FTN mailer (daemon + BinkP/ifcico inbound)
 Documentation=man:qico(8)
-# Pull in both pieces; order after they are up
-Wants=qico.service qico-binkp.socket
-After=network-online.target qico.service qico-binkp.socket
+# Pull in all pieces; order after they are up
+Wants=qico.service qico-binkp.socket qico-ifc.socket
+After=network-online.target qico.service qico-binkp.socket qico-ifc.socket
 Wants=network-online.target
 
 [Install]
 WantedBy=multi-user.target
-# Enabling this target also enables the two real units
-Also=qico.service qico-binkp.socket
+# Enabling this target also enables the real units (not the @.service templates)
+Also=qico.service qico-binkp.socket qico-ifc.socket

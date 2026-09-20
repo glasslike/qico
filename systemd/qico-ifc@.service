@@ -1,0 +1,38 @@
+# qico-ifc@.service — per-connection ifcico (EMSI) answer
+#
+# Instantiated by qico-ifc.socket (Accept=yes) as qico-ifc@<id>.service.
+# Do not enable this unit directly; enable qico.target (or the socket).
+#
+# stdin/stdout are the connected TCP socket (same contract as inetd).
+# -aauto starts an inbound EMSI session (ifcico), not BinkP.
+
+[Unit]
+Description=qico ifcico answer connection %i
+Documentation=man:qico(8)
+# Stop leftover answer processes when the whole stack is stopped
+PartOf=qico.target
+After=network.target
+
+[Service]
+Type=simple
+User=map
+Group=map
+
+# Same config path as the queue daemon. -aauto = ifcico/EMSI on this socket.
+ExecStart=/home/map/ftn/usr/bin/qico -I/home/map/ftn/usr/etc/qico/qico.conf -aauto
+
+# Hand the accepted socket to qico as fd 0/1 (inetd style)
+StandardInput=socket
+StandardOutput=socket
+# Keep errors visible in the journal (do not send stderr to the peer)
+StandardError=journal
+
+# One session, then exit
+Restart=no
+TimeoutStopSec=30
+KillMode=process
+
+WorkingDirectory=/home/map/ftn/fido
+
+NoNewPrivileges=true
+PrivateTmp=true
