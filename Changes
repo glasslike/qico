@@ -1,5 +1,9 @@
 Unreleased
 ~~~~~~~~~~
+- if date: match the day of the month. A bare month ("Feb") is the
+  whole month, and "dd-dd" ranges parse. Day-of-year comparison made
+  "Jan15" true on 16 January and every later month's day condition
+  false; ranges and a bare month were always false.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).

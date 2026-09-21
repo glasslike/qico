@@ -2569,16 +2569,33 @@ static int chkdate(char *str)
 	time(&tt);now=localtime(&tt);
 	for(m=0;m<13;m++) if(!strncasecmp(str,engms[m],3)) break;
 	DEBUG(('Y',2,"chkdate: \"%s\": month is %d, now %d",str,m,now->tm_mon));
+	/*
+	 * engms[] is Jan..Dec then "Any". tm_mon is 0..11 in that same
+	 * order, so index 12 is any month. A different month is false
+	 * before the day is considered.
+	 *
+	 * Sample syntax is <mon>[dd[-dd]]. No day means the whole month
+	 * ("Feb"). A range has to parse as two numbers: sscanf returns 2,
+	 * and the old "!= 1" test treated every "dd-dd" ("Any10-13",
+	 * "Mar1-30") as a failed parse, so those conditions were always
+	 * false.
+	 *
+	 * The number is the day of the month (tm_mday, 1..31). Comparing
+	 * it with tm_yday (day of year, 0..365) made "Jan15" true on
+	 * 16 January and made every February-December day condition false.
+	 */
 	if(m>12 || (m!=12 && m!=now->tm_mon)) return 0;
 
 	str+=3;while(*str==' '||*str=='\t') str++;
 	if(!(p=strchr(str,'-'))) {
+		if(*str=='\0')
+			return 1;
 		if(sscanf(str,"%d", &d1)!=1) {
 			DEBUG(('Y',1,"chkdate: no day: 0"));
 			return 0;
 		}
 		d2=d1;
-	} else if(sscanf(str,"%d-%d", &d1, &d2)!=1) {
+	} else if(sscanf(str,"%d-%d", &d1, &d2)!=2) {
 		DEBUG(('Y',1,"chkdate: no two days: 0"));
 		return 0;
 	}
@@ -2587,6 +2604,6 @@ static int chkdate(char *str)
 		DEBUG(('Y',1,"chkdate: %d > %d",d1,d2));
 		return 0;
 	}
-	DEBUG(('Y',3,"chkdate: %d",now->tm_yday>=d1 && now->tm_yday<=d2));
-	return now->tm_yday>=d1 && now->tm_yday<=d2;
+	DEBUG(('Y',3,"chkdate: %d",now->tm_mday>=d1 && now->tm_mday<=d2));
+	return now->tm_mday>=d1 && now->tm_mday<=d2;
 }
