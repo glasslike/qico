@@ -229,7 +229,22 @@ static void answer_mode(int type)
     is_ip = !isatty( 0 );
 
     xstrcpy( ip_id, "ipline", 10 );
-    rnode->tty = xstrdup( is_ip ? ( bink ? "binkp" : "tcpip" ) : qbasename( ttyname( 0 )));
+    if ( is_ip ) {
+        rnode->tty = xstrdup( bink ? "binkp" : "tcpip" );
+    } else {
+        /*
+         * The name is only the log suffix (log.ttyS0). mgetty exports
+         * the real port in DEVICE. ttyname(0) is sometimes /dev/tty,
+         * and then every modem writes the same log. qbasename() does
+         * not accept a NULL name, so a missing port becomes "modem".
+         */
+        cs = getenv( "DEVICE" );
+        if ( !cs || !*cs )
+            cs = ttyname( 0 );
+        if ( !cs || !*cs )
+            cs = "modem";
+        rnode->tty = xstrdup( qbasename( cs ));
+    }
     rnode->options |= O_INB;
 
     if ( !log_init( cfgs( CFG_LOG ), rnode->tty )) {

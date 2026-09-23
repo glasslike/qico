@@ -256,34 +256,75 @@ int has_addr(const ftnaddr_t *a, falist_t *l)
 	return 0;
 }
 
+/*
+ * Read one NUL-terminated field from a type-2+ packet.
+ * Names are 36 bytes and the subject is 72, counting the NUL
+ * (FTS-0001). The date is 20; 30 is only the point where a missing
+ * NUL means the rest of the packet cannot be split.
+ * buf may be NULL when the field is skipped. The byte is kept as an
+ * int: a signed char would treat a value above 127 as the end of the
+ * field, so a local-charset name would be cut at the first such byte.
+ * Returns 0 when a NUL arrived inside the limit. Returns -1 on EOF
+ * or when the limit was filled with no NUL. The caller then stops
+ * listing; the packet file itself is only read.
+ */
+static int showpkt_field(FILE *f, char *buf, int max)
+{
+	int	i = 0, c = 0;
+
+	/*
+	 * Stop before reading past the limit. A later byte belongs to
+	 * the next field, and this call is about to give up anyway.
+	 */
+	while ( i < max && ( c = fgetc( f )) > 0 ) {
+		if ( buf )
+			buf[i] = c;
+		i++;
+	}
+	if ( c == 0 && i < max ) {
+		if ( buf )
+			buf[i] = '\0';
+		return 0;
+	}
+	return -1;
+}
+
+
 int showpkt(const char *fn)
 {
-	FILE *f;
-	int i,n=1;
-	pkthdr_t ph;
-	pktmhdr_t mh;
-	char from[36],to[36],a;
-	f=fopen(fn,"r");
-	if(!f){write_log("can't open '%s' for reading: %s",fn,strerror(errno));return 0;}
-	if(fread(&ph,sizeof(ph),1,f)!=1)write_log("packet read error");
-	    else if(I2H16(ph.phType)!=2)write_log("packet isn't 2+ format");
-		else {
-		    while(fread(&mh,sizeof(mh),1,f)==1) {
-			i=0;while(fgetc(f)>0&&i<30)i++;i=0;
-			if(i>=30)break;
-			while((a=fgetc(f))>0&&i<36)to[i++]=a;
-			if(i>=36)break;
-			to[i]=0;i=0;
-			while((a=fgetc(f))>0&&i<36)from[i++]=a;
-			if(i>=32)break;
-			from[i]=0;i=0;
-			while(fgetc(f)>0&&i<72)i++;
-			if(i>=72)break;
-			while(fgetc(f)>0);
-			write_log("*msg: %d from: \"%s\", to: \"%s\"",n++,from,to);
-		    }
+	FILE		*f;
+	int		n = 1, c;
+	pkthdr_t	ph;
+	pktmhdr_t	mh;
+	char		from[36], to[36];
+
+	f = fopen( fn, "r" );
+	if ( !f ) {
+		write_log( "can't open '%s' for reading: %s", fn, strerror( errno ));
+		return 0;
 	}
-	fclose(f);
+	if ( fread( &ph, sizeof( ph ), 1, f ) != 1 )
+		write_log( "packet read error" );
+	else if ( I2H16( ph.phType ) != 2 )
+		write_log( "packet isn't 2+ format" );
+	else {
+		while ( fread( &mh, sizeof( mh ), 1, f ) == 1 ) {
+			if ( showpkt_field( f, NULL, 30 ) != 0 )
+				break;
+			if ( showpkt_field( f, to, 36 ) != 0 )
+				break;
+			if ( showpkt_field( f, from, 36 ) != 0 )
+				break;
+			if ( showpkt_field( f, NULL, 72 ) != 0 )
+				break;
+			while (( c = fgetc( f )) > 0 )
+				;
+			recode_to_local( from );
+			recode_to_local( to );
+			write_log( "*msg: %d from: \"%s\", to: \"%s\"", n++, from, to );
+		}
+	}
+	fclose( f );
 	return 0;
 }
 

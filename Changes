@@ -16,6 +16,10 @@ Unreleased
   the session continues with the others.
 - fix longrescan: the counter only increased, so a full ?lo recount
   never repeated. Every Nth scan now recounts. 0 still means off.
+- inbound modem: the log line name comes from mgetty DEVICE, then
+  from ttyname. A missing name is "modem", not a NULL basename.
+- showpkt: from/to names are logged up to 36 bytes and recoded to
+  the local charset. A field with no NUL stops the listing.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).
