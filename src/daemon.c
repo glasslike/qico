@@ -606,12 +606,41 @@ void daemon_mode()
 
 		title( "Queue manager [%d]", rescanperiod - t_rescan );
 		if ( t_rescan >= rescanperiod || do_rescan ) {
-			if ( rnum < 0 )
-				rnum = cfgi( CFG_LONGRESCAN ) - 1;
+			int longrescan = cfgi( CFG_LONGRESCAN );
+			int rslow;
+
+			/*
+			 * rnum counts down to a full recount of ?lo files and
+			 * fileboxes. A normal scan keeps the saved sizes when
+			 * the file or directory time has not changed. The full
+			 * scan stats every listed file.
+			 *
+			 * longrescan N (N > 0) makes every Nth scan a full one.
+			 * The counter runs N-1, N-2, ... 0; the 0 scan is the
+			 * full one, then the counter reloads. 0, a negative
+			 * value, or an omitted keyword never starts this cycle.
+			 *
+			 * rnum == 0 set from outside is still one full scan.
+			 * The operator rescan request and a dnotify event do
+			 * that. Afterwards the counter reloads, or stays off
+			 * when longrescan is not a positive period. rnum < 0
+			 * is the state before the first scan. A period that
+			 * became smaller than the current count restarts, so
+			 * a reread config does not wait out the old value.
+			 */
+			if ( rnum < 0 || ( longrescan > 0 && rnum > longrescan - 1 ))
+				rnum = ( longrescan > 0 ) ? longrescan - 1 : 1;
+			rslow = ( rnum == 0 );
 			do_rescan = 0;
-			if ( !q_rescan( &current, rnum == 0 ))
+			if ( !q_rescan( &current, rslow ))
 				write_log("can't rescan outbound");
-			rnum = rnum + 1;
+			if ( longrescan > 0 ) {
+				if ( rnum == 0 )
+					rnum = longrescan - 1;
+				else
+					rnum--;
+			} else if ( rnum == 0 )
+				rnum = 1;
 			t_rescan = 0;
 		}
 

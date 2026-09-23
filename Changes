@@ -14,6 +14,8 @@ Unreleased
 - binkp: on an incoming call, a busy password-protected aka ends
   the session with M_BSY. On our own call that aka is skipped and
   the session continues with the others.
+- fix longrescan: the counter only increased, so a full ?lo recount
+  never repeated. Every Nth scan now recounts. 0 still means off.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).
