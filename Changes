@@ -11,6 +11,9 @@ Unreleased
   A .bsy/.csy older than this is removed, including an empty file
   or one whose PID now belongs to another process. A live session
   refreshes its own busy files about once a minute.
+- binkp: on an incoming call, a busy password-protected aka ends
+  the session with M_BSY. On our own call that aka is skipped and
+  the session continues with the others.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).

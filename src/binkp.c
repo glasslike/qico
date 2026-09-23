@@ -551,8 +551,32 @@ static int M_adr(BPS *bp, byte *arg)
 
 					DEBUG(('B',4,"totalm: %lu, totalf: %lu", totalm, totalf));
 
-				} else
+				} else {
+					char *rpwd = findpwd( &fa );
+
 					write_log( "Can't lock outbound for %s", ftnaddrtoa( &fa ));
+					/*
+					 * Inbound only, same as binkd. The caller listed
+					 * an aka we have a real password for, and that
+					 * aka is already busy. Continuing on the other
+					 * akas would finish without it, and the caller
+					 * would treat the session as done. Tell them to
+					 * call again. "-" is "no password".
+					 * On our own call the busy file is local: skip
+					 * this aka and keep the session for the rest.
+					 * Mail for the busy aka stays outbound.
+					 * The address is not added, so its busy file
+					 * stays with whoever created it.
+					 */
+					if ( !bp->to && rpwd && *rpwd && strcmp( rpwd, "-" ) != 0 ) {
+						log_rinfo( rnode );
+						write_log( "Secure aka %s is busy", ftnaddrtoa( &fa ));
+						msgs( BPM_BSY, "Secure aka %s is busy", ftnaddrtoa( &fa ));
+						bp->rc = S_BUSY;
+						xfree( adr_owned );
+						return 0;
+					}
+				}
 			} else
 				DEBUG(('B',4,"removed duplicated aka: %s", rem_aka));
 		} else {
