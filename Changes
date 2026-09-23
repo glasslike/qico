@@ -1,6 +1,9 @@
 Unreleased
 ~~~~~~~~~~
 - fix "if date": the day in the condition was compared with the day of the year.
+- fix binkp file time: a UTC timestamp was shifted by the local timezone.
+  BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
+  and Janus carry local time, so the zone offset is still applied.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).

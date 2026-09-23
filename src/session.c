@@ -907,6 +907,8 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
     falist_t *pp;
 
     runtoss = 0;
+    /* BinkP file time is UTC. Other protocols still use local time. */
+    prot_ftime_utc( type == SESSION_BINKP );
     rnode->starttime = 0;
     rnode->realspeed = effbaud = speed;
 
