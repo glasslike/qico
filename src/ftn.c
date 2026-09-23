@@ -41,6 +41,13 @@ void addr_cpy(ftnaddr_t *a, const ftnaddr_t *b)
 	a->n = b->n;
 	a->f = b->f;
 	a->p = b->p;
+	/*
+	 * locked names the busy files this object created. A copy is a
+	 * new object and must not delete those files, so the flag is
+	 * cleared here rather than copied. Callers that lock a list
+	 * node have to set the flag on that node after the copy.
+	 */
+	a->locked = 0;
 	if ( b->d && *b->d )
 		a->d = xstrdup( b->d );
 	else
@@ -67,7 +74,7 @@ int parseftnaddr(const char *s, ftnaddr_t *a, const ftnaddr_t *b, int wc)
 	if(b) {
 		addr_cpy(a,b);
 		a->p=wc?-1:0;
-	} else a->z=a->n=a->f=a->p=wc?-1:0,a->d=NULL;
+	} else a->z=a->n=a->f=a->p=wc?-1:0,a->d=NULL,a->locked=0;
 	for(pn=p;*p&&pq;p++) {
 		if(isdigit((int)*p))wn=1;
 		else if(wc&&*p=='*')wn=2;

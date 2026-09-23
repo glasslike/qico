@@ -4,6 +4,13 @@ Unreleased
 - fix binkp file time: a UTC timestamp was shifted by the local timezone.
   BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
   and Janus carry local time, so the zone offset is still applied.
+- fix outbound lock: session end removed .bsy/.csy files this process
+  had not created. A node is locked in every configured outbound or
+  in none, and only the files that address created are removed.
+- new keyword: `kill-old-bsy` <time>. Default: off.
+  A .bsy/.csy older than this is removed, including an empty file
+  or one whose PID now belongs to another process. A live session
+  refreshes its own busy files about once a minute.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).

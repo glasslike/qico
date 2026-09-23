@@ -705,6 +705,9 @@ int tty_putc(char ch)
 int tty_getc(int timeout)
 {
 
+	/* Modem and EMSI/Zmodem/Hydra/Janus reads come through here. */
+	outbound_touch_busy();
+
 	DEBUG(('T',8,"tty_getc: tty_rx_ptr=%d, tty_rx_left=%d",tty_rx_ptr,tty_rx_left));
 	if ( tty_rx_left == 0 ) {
 		int rc = tty_hasdata( timeout, 0 );

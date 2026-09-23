@@ -68,12 +68,21 @@
 #define BSO	1
 #define ASO	2
 
+/*
+ * Bit in ftnaddr_t.locked. The busy files this object created are
+ * .csy (a call). Without the bit they are .bsy (a session). The
+ * low bits are BSO and/or ASO. Zero means this object holds nothing.
+ * addr_cpy() does not copy the flag: it is ownership, not an address.
+ */
+#define LCK_HELD_CSY	0x0100
+
 typedef struct {
 	int z, n, f, p;
 	char *d;
+	int locked;
 } ftnaddr_t;
 
-#define FTNADDR_T(a) ftnaddr_t (a)={0,0,0,0,NULL}
+#define FTNADDR_T(a) ftnaddr_t (a)={0,0,0,0,NULL,0}
 
 #include "slists.h"
 
@@ -191,8 +200,12 @@ int	outbound_init(const char *, const char *, const char *, int);
 void	outbound_done(void);
 int	outbound_rescan(qeach_t, int);
 int	outbound_addr_busy(const ftnaddr_t *);
-int	outbound_locknode(const ftnaddr_t *, int);
-int	outbound_unlocknode(const ftnaddr_t *, int);
+int	outbound_locknode(ftnaddr_t *, int);
+int	outbound_unlocknode(ftnaddr_t *, int);
+/* Refresh busy files this process created. No-op when kill-old-bsy is off. */
+void	outbound_touch_busy(void);
+/* 1 if kill-old-bsy is unset, off, or a valid period. 0 if the value is bad. */
+int	outbound_check_old_bsy(void);
 int	outbound_flavor(char fl);
 int	outbound_attach(const ftnaddr_t *, int, slist_t *);
 int	outbound_request(const ftnaddr_t *, slist_t *);

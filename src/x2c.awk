@@ -10,8 +10,10 @@ BEGIN {
 }
 
 /^[^\#]/ {
+    name = toupper($1)
+    gsub(/-/, "_", name)
     print "\t{\"" tolower($1) "\"," $2 "," $3 ",NULL," $4 "}," >C
-    print "#define CFG_" toupper($1) "\t\t" i >H
+    print "#define CFG_" name "\t\t" i >H
     i++
 }
 

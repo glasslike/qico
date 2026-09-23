@@ -262,6 +262,21 @@ bsooutbound	$(spool)/outbound
 # (nonif)
 qstoutbound	$(spool)/qstoutb
 
+# Remove leftover .bsy/.csy files. These flags mean "this node is
+# busy". Off when the line is omitted, or when the value is 0.
+# On the next check of that node, a flag older than this time is
+# deleted. This clears a flag left after a crash or a hard reboot,
+# an empty flag, and a flag whose PID now belongs to another
+# process. A dead PID is still removed at once, without waiting.
+# A running session updates the time of its own flags about once
+# a minute, so set this in hours. A few minutes is too short: the
+# flag of a live session can be removed while it waits on the line.
+# A bare number is seconds. Suffix s, m, h or d is allowed
+# (12h is 12 hours).
+#
+# (nonif)
+;kill-old-bsy	12h
+
 # unprotected inbound
 #
 # (required)

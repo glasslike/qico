@@ -52,7 +52,7 @@ void		slist_killn(slist_t **);
 aslist_t	*aslist_add(aslist_t **, const char *, const char *);
 aslist_t	*aslist_find(aslist_t *, const char *);
 void		aslist_kill(aslist_t **);
-void		falist_add(falist_t **, const ftnaddr_t *);
+falist_t	*falist_add(falist_t **, const ftnaddr_t *);
 falist_t	*falist_find(falist_t *, const ftnaddr_t *);
 void		falist_kill(falist_t **);
 void		faslist_add(faslist_t **, const char *, const ftnaddr_t *);

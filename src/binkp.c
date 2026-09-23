@@ -493,6 +493,7 @@ static int M_adr(BPS *bp, byte *arg)
 	char		*adr_owned = NULL;
 	FTNADDR_T	( fa );
 	falist_t	*our_addrs = cfgal( CFG_ADDRESS );
+	falist_t	*held;
 	int		rc = 0;
     
 	DEBUG(('B',3,"ADR: %s", buf));
@@ -510,6 +511,10 @@ static int M_adr(BPS *bp, byte *arg)
 			continue;
 		if ( parseftnaddr( rem_aka, &fa, NULL, 0 )) {
 			if ( has_addr( &fa, our_addrs )) {
+				/*
+				 * Recorded so the log can name it, not locked.
+				 * Session end then leaves any busy file alone.
+				 */
 				falist_add( &rnode->addrs, &fa );
 				log_rinfo( rnode );
 				write_log( "Remote has our aka %s", ftnaddrtoa( &fa ));
@@ -533,7 +538,15 @@ static int M_adr(BPS *bp, byte *arg)
 					}
 
 					rc++;
-					falist_add( &rnode->addrs, &fa );
+					held = falist_add( &rnode->addrs, &fa );
+					/*
+					 * falist_add copies the address and clears
+					 * locked. Session end unlocks the list node,
+					 * including a shared AKA added to this same
+					 * list, so the busy files move onto that node.
+					 */
+					held->addr.locked = fa.locked;
+					fa.locked = 0;
 					makeflist( &fl, &fa, bp->to );
 
 					DEBUG(('B',4,"totalm: %lu, totalf: %lu", totalm, totalf));
@@ -1486,6 +1499,9 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 	binkp_hs( bps );
 
 	while ( 1 ) {
+
+		/* select() below can block; refresh before the wait. */
+		outbound_touch_busy();
 
 		DEBUG(('B',3,"init: %d, send_file: %d, sent_eob: %d, txfd: %.8p, nofiles: %d",
 			bps->init, bps->send_file, bps->sent_eob, txfd, bps->nofiles));
