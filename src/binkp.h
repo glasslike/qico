@@ -97,7 +97,8 @@ struct _BP_SESSION {
 
     word mib;			/* Messages In Batch (MIB 3 :) */
 
-    int init;			/* Init state (handshake) */
+    int init;			/* 1 = handshake, 0 = transfer (after M_PWD/M_OK) */
+    int got_adr;		/* Remote M_ADR already accepted; a second is rejected */
     int rc;			/* Return code */
     int error;			/* I/O error flag */
     int saved_errno;		/* what went wrong */

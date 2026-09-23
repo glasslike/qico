@@ -103,6 +103,64 @@ static const char *weekday_names[] = {
 };
 
 
+/*
+ * Non-empty session password. Missing, empty and "-" (qico/binkd
+ * "no password") are all "not set". Used when comparing passwords
+ * across AKAs in one M_ADR.
+ */
+static int bp_pwd_set(const char *p)
+{
+	return ( p && *p && strcmp( p, "-" ) != 0 );
+}
+
+
+/*
+ * Login commands (M_ADR / M_PWD / M_OK) are valid only while init is
+ * set. After binkp_hsdone() a second M_PWD would re-run auth and
+ * rebuild CRYPT keys; binkd rejects that (state != P_NULL).
+ */
+static int bp_login_ok(BPS *bp, const char *cmd)
+{
+	if ( bp->init )
+		return 1;
+	write_log( "Binkp: unexpected %s after handshake", cmd );
+	msgs( BPM_ERR, "Protocol error" );
+	bp->rc = S_FAILURE;
+	return 0;
+}
+
+
+/*
+ * File commands and their data are valid only after handshake.
+ * Frames are processed in order, so a remote that sends M_OK then
+ * M_FILE is accepted; M_FILE before password check is not.
+ */
+static int bp_xfer_ok(BPS *bp, const char *cmd)
+{
+	if ( !bp->init )
+		return 1;
+	write_log( "Binkp: unexpected %s during handshake", cmd );
+	msgs( BPM_ERR, "Protocol error" );
+	bp->rc = S_FAILURE;
+	return 0;
+}
+
+
+/*
+ * Copy a config string and recode the copy. recode_to_remote() writes
+ * in place; passing cfgs() used to mutate station/sysop/place for the
+ * rest of the process and double-encode the next session.
+ */
+static void recode_cfg_copy(char *dst, size_t dstsz, int cfgid)
+{
+	const char *s = cfgs( cfgid );
+
+	if ( !s )
+		s = "";
+	xstrcpy( dst, s, dstsz );
+	recode_to_remote( dst );
+}
+
 
 static int binkp_init(int to)
 {
@@ -128,6 +186,7 @@ static int binkp_init(int to)
 	bps->tx_ptr = bps->tx_left = 0;
 
 	bps->init = 1;
+	bps->got_adr = 0;
 
 	for( p = cfgs( CFG_BINKPOPT ); *p; p++ ) {
 		switch(tolower(*p)) {
@@ -498,6 +557,15 @@ static int M_adr(BPS *bp, byte *arg)
     
 	DEBUG(('B',3,"ADR: %s", buf));
 
+	if ( !bp_login_ok( bp, "M_ADR" ))
+		return 0;
+	if ( bp->got_adr ) {
+		write_log( "Binkp: unexpected second M_ADR" );
+		msgs( BPM_ERR, "Protocol error" );
+		bp->rc = S_FAILURE;
+		return 0;
+	}
+
 	/* binkd-compatible shared-AKA adjustment of remote ADR */
 	adr_owned = share_adr_adjust( buf );
 	buf = adr_owned;
@@ -526,16 +594,43 @@ static int M_adr(BPS *bp, byte *arg)
 
 			/* Search for duplicated remote akas */
 			if ( !falist_find( rnode->addrs, &fa )) {
+				char *aka_pwd = findpwd( &fa );
+
+				/*
+				 * Same rule as binkd: every presented AKA with a
+				 * real password must share one secret. A mix of
+				 * one passworded AKA and open AKAs is allowed.
+				 * Check before lock so a rejected address is not
+				 * held busy.
+				 */
+				if ( !bp->to ) {
+					if ( bp_pwd_set( aka_pwd )) {
+						if ( !bp_pwd_set( rem_pwd ))
+							rem_pwd = aka_pwd;
+						else if ( strcmp( rem_pwd, aka_pwd ) != 0 ) {
+							log_rinfo( rnode );
+							write_log( "inconsistent pwd settings for this node" );
+							msgs( BPM_ERR, "Bad password" );
+							bp->rc = S_FAILURE;
+							xfree( adr_owned );
+							return 0;
+						}
+					}
+				} else {
+					char *call_pwd = findpwd( bp->remaddr );
+
+					if ( bp_pwd_set( aka_pwd ) && bp_pwd_set( call_pwd )
+						&& strcmp( aka_pwd, call_pwd ) != 0 )
+					{
+						write_log( "inconsistent pwd settings for this node, aka %s dropped",
+							ftnaddrtoa( &fa ));
+						continue;
+					}
+				}
+
 				if ( outbound_locknode( &fa, LCK_s )) {
                     
 					DEBUG(('B',4,"locked: %s", rem_aka));
-
-					if ( !bp->to && !rem_pwd ) {
-						rem_pwd = findpwd( &fa );
-						if ( rem_pwd ) {
-							DEBUG(('B',4,"found pwd '%s' for %s", rem_pwd, rem_aka));
-						}
-					}
 
 					rc++;
 					held = falist_add( &rnode->addrs, &fa );
@@ -616,7 +711,6 @@ static int M_adr(BPS *bp, byte *arg)
 		if ( rem_pwd == NULL )
 			rem_pwd = "-";
 
-		DEBUG(('B',4,"pwd: '%s'",rem_pwd));
 		if ( bp->MD_chal ) {
 			char *dig = md5_digest( rem_pwd, bp->MD_chal );
 
@@ -642,6 +736,7 @@ static int M_adr(BPS *bp, byte *arg)
 	else
 		rnode->options |= O_PWD;
 
+	bp->got_adr = 1;
 	return 1;
 }
 
@@ -773,6 +868,9 @@ static int M_file(BPS *bp, byte *arg)
 
 	DEBUG(('B',3,"FILE %s", buf));
 
+	if ( !bp_xfer_ok( bp, "M_FILE" ))
+		return 0;
+
 	if ( bp->sent_eob && bp->recv_eob )
 		bp->sent_eob = 0;
 	bp->cls = 1;
@@ -859,21 +957,35 @@ static int M_pwd(BPS *bp, byte *arg)
 	int	have_pwd = ((rnode->options & O_PWD) != 0 );
 	int	bad_pwd;
 
-	DEBUG(('B',3,"PWD %s", buf));
+	DEBUG(('B',3,"PWD"));
 
-	if ( bp->to ) {
-		DEBUG(('B',1,"unexpected password (%s) from remote on outgoing call", buf));
+	if ( !bp_login_ok( bp, "M_PWD" ))
+		return 0;
+	if ( !bp->got_adr ) {
+		write_log( "Binkp: M_PWD before M_ADR" );
+		msgs( BPM_ERR, "Protocol error" );
 		bp->rc = S_FAILURE;
 		return 0;
 	}
 
-	DEBUG(('B',4,"have_CRAM: %d, have_pwd: %d, rn_pwd: '%s', MD_chal: %.8p", have_CRAM, have_pwd,
-		rnode->pwd, bp->MD_chal));
+	if ( bp->to ) {
+		DEBUG(('B',1,"unexpected password from remote on outgoing call"));
+		bp->rc = S_FAILURE;
+		return 0;
+	}
+
+	DEBUG(('B',4,"have_CRAM: %d, have_pwd: %d, MD_chal: %.8p", have_CRAM, have_pwd,
+		bp->MD_chal));
 
 	if ( bp->MD_chal ) {
 		if ( have_CRAM ) {
 			got_pwd = buf + 9;
 			exp_pwd = md5_digest( rnode->pwd, bp->MD_chal );
+			if ( exp_pwd == NULL ) {
+				msgs( BPM_ERR, "Can't build digest" );
+				bp->rc = S_FAILURE;
+				return 0;
+			}
 			bp->opt_md |= O_THEY;
 		} else if ( bp->opt_md & O_NEED ) {
 			log_rinfo( rnode );
@@ -889,13 +1001,21 @@ static int M_pwd(BPS *bp, byte *arg)
 		exp_pwd = xstrdup( rnode->pwd );
 	}
 
-	bad_pwd = strcasecmp( exp_pwd, got_pwd );
-	DEBUG(('B',4,"exp_pwd: '%s', got_pwd: '%s', bad_pwd: %d", exp_pwd, got_pwd, bad_pwd ));
+	/*
+	 * Plaintext is case-sensitive (binkd strcmp). CRAM-MD5 hex is
+	 * case-insensitive: A-F and a-f are the same digest.
+	 */
+	if ( !exp_pwd || !got_pwd )
+		bad_pwd = 1;
+	else if ( have_CRAM )
+		bad_pwd = strcasecmp( exp_pwd, got_pwd );
+	else
+		bad_pwd = strcmp( exp_pwd, got_pwd );
 
 	if ( have_pwd ) {
 		if ( bad_pwd ) {
 			log_rinfo( rnode );
-			write_log( "Bad password '%s'", buf );
+			write_log( "Bad password" );
 			msgs( BPM_ERR, "Security violation" );
 			xfree( exp_pwd );
 			rnode->options |= O_BAD;
@@ -903,7 +1023,7 @@ static int M_pwd(BPS *bp, byte *arg)
 			return 0;
 		}
 	} else if ( bad_pwd ) {
-		write_log( "Remote proposed password for us '%s'", buf );
+		write_log( "Remote proposed a password" );
 	}
 
 	if (( bp->opt_md & ( O_THEY | O_WANT )) == ( O_THEY | O_WANT ))
@@ -925,6 +1045,7 @@ static int M_pwd(BPS *bp, byte *arg)
 	msgs( BPM_NUL, "TRF %lu %lu", totalm, totalf );
 	msgs( BPM_OK, "%ssecure", have_pwd ? "" : "non-" );
 
+	xfree( exp_pwd );
 	return binkp_hsdone( bp );
 }
 
@@ -937,6 +1058,15 @@ static int M_ok(BPS *bp, byte *arg)
 	char *buf = (char *) arg;
 
 	DEBUG(('B',3,"OK %s", buf));
+
+	if ( !bp_login_ok( bp, "M_OK" ))
+		return 0;
+	if ( !bp->got_adr ) {
+		write_log( "Binkp: M_OK before M_ADR" );
+		msgs( BPM_ERR, "Protocol error" );
+		bp->rc = S_FAILURE;
+		return 0;
+	}
 
 	if ( !bp->to ) {
 		DEBUG(('B',1,"unexpected M_OK (%s) from remote on incoming call", buf));
@@ -1041,6 +1171,9 @@ static int M_get(BPS *bp, byte *arg)
 	long	fsize, ftime, foffs;
 
 	DEBUG(('B',3,"GET %s", buf));
+
+	if ( !bp_xfer_ok( bp, "M_GET" ))
+		return 0;
     
 	if ( file_parse( buf, &fname, &fsize, &ftime, &foffs )) {
 		if ( bp->send_file && sendf.fname
@@ -1078,6 +1211,9 @@ static int M_gotskip(BPS *bp, byte *arg)
 	long 	fsize, ftime;
 
 	DEBUG(('B',3,"%s %s", mess[id], buf));
+
+	if ( !bp_xfer_ok( bp, mess[id] ))
+		return 0;
 
 	if ( file_parse( buf, &fname, &fsize, &ftime, NULL )) {
         	if ( sendf.fname && !strncasecmp( fname, sendf.fname, MAX_PATH )
@@ -1209,7 +1345,17 @@ static int binkp_send(BPS *bp)
 		} else if ( bp->send_file && txfd && !bp->wait_for_get ) {
 			int blksz = MIN( BP_BLKSIZE, sendf.ftot - bp->txpos );
 
-			if (( rc = fread( bp->tx_buf + BLK_HDR_SIZE, 1, blksz, txfd )) < 0 ) {
+			/*
+			 * fread() returns a short count, never -1. A short
+			 * read is OK only when this chunk finishes the file.
+			 * Anything else (I/O error or a truncated outbound
+			 * file) must not look like a successful send.
+			 */
+			rc = (int) fread( bp->tx_buf + BLK_HDR_SIZE, 1, (size_t) blksz, txfd );
+			if ( ferror( txfd )
+				|| ( rc < blksz
+					&& (size_t) bp->txpos + (size_t) rc != (size_t) sendf.ftot ))
+			{
 				sline("Binkp: file read error at pos %lu", bp->txpos);
 				DEBUG(('B',1,"Binkp: file read error at pos %lu", bp->txpos));
 				txclose( &txfd, FOP_ERROR );
@@ -1278,15 +1424,22 @@ static int store_data(BPS *bp)
 		return 1;
 	}
 
-	if (( n = fwrite( bp->rx_buf, 1, bp->rx_size, rxfd )) < 0 ) {
+	/*
+	 * fwrite() returns the number of members written, never -1.
+	 * A short write or a failed flush used to look like success
+	 * and could still produce M_GOT. Match binkd: require a full
+	 * write and a successful flush.
+	 */
+	n = (int) fwrite( bp->rx_buf, 1, (size_t) bp->rx_size, rxfd );
+	if ( n != bp->rx_size || fflush( rxfd ) != 0 ) {
 		bp->recv_file = 0;
 		sline( "Binkp: file write error" );
 		write_log( "can't write to %s, suspended", recvf.fname );
 		rxclose( &rxfd, FOP_ERROR );
 		msgs( BPM_SKIP, tmp );
 	} else {
-		bp->rxpos += bp->rx_size;
-		recvf.foff += bp->rx_size;
+		bp->rxpos += n;
+		recvf.foff += n;
 		DEBUG(('B',5,"data -> rxpos: %lu, recvf.foff: %lu", (long) bp->rxpos, (long) recvf.foff ));
 
 		qpfrecv();
@@ -1429,21 +1582,25 @@ static void binkp_hs(BPS *bp)
 		msgs( BPM_NUL, "OPT CRAM-MD5-%s", chall );
 	}
 
-	recode_to_remote( cfgs( CFG_STATION ));
-	msgs( BPM_NUL, "SYS %s", ccs );
+	recode_cfg_copy( tmp, sizeof( tmp ), CFG_STATION );
+	msgs( BPM_NUL, "SYS %s", tmp );
 
-	recode_to_remote( cfgs( CFG_SYSOP ));
-	msgs( BPM_NUL, "ZYZ %s", ccs );
+	recode_cfg_copy( tmp, sizeof( tmp ), CFG_SYSOP );
+	msgs( BPM_NUL, "ZYZ %s", tmp );
 
-	recode_to_remote( cfgs( CFG_PLACE ));
-	msgs( BPM_NUL, "LOC %s", ccs );
+	recode_cfg_copy( tmp, sizeof( tmp ), CFG_PLACE );
+	msgs( BPM_NUL, "LOC %s", tmp );
 
-	recode_to_remote( cfgs( CFG_FLAGS ));
-	msgs( BPM_NUL, "NDL %d,%s", cfgi( CFG_SPEED ), ccs );
+	{
+		int spd = cfgi( CFG_SPEED );
 
-	recode_to_remote( cfgs( CFG_PHONE ));
-	if ( ccs && *ccs )
-		msgs( BPM_NUL, "PHN %s", ccs );
+		recode_cfg_copy( tmp, sizeof( tmp ), CFG_FLAGS );
+		msgs( BPM_NUL, "NDL %d,%s", spd, tmp );
+	}
+
+	recode_cfg_copy( tmp, sizeof( tmp ), CFG_PHONE );
+	if ( tmp[0] )
+		msgs( BPM_NUL, "PHN %s", tmp );
 
 	tt = time( NULL );
 	tm = localtime( &tt );

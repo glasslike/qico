@@ -1,5 +1,13 @@
 Unreleased
 ~~~~~~~~~~
+- fix binkp: handshake commands (M_ADR, M_PWD, M_OK) are rejected after
+  login. File commands are rejected before login. Matches binkd.
+- fix binkp: inbound session with two different passwords in one M_ADR
+  is refused. On our call the conflicting aka is dropped.
+- fix binkp: plaintext password compare is case-sensitive. CRAM-MD5 hex
+  is still case-insensitive. Failed passwords are not written to the log.
+- fix binkp: a short fread/fwrite is an error. M_GOT is not sent for a
+  file that was not stored. Identity NULs recode a copy, not the config.
 - fix "if date": the day in the condition was compared with the day of the year.
 - fix binkp file time: a UTC timestamp was shifted by the local timezone.
   BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
