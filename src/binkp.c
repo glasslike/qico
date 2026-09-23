@@ -102,6 +102,9 @@ static const char *weekday_names[] = {
     "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
 };
 
+/* Used by handshake guards below; defined after the option parser. */
+static int msgs(char id, char *str, ...);
+
 
 /*
  * Non-empty session password. Missing, empty and "-" (qico/binkd

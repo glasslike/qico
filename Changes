@@ -1,5 +1,7 @@
 Unreleased
 ~~~~~~~~~~
+- fix binkp: declare msgs() before the handshake guards so GCC
+  does not treat the call as an implicit int() and fail the build.
 - fix binkp: handshake commands (M_ADR, M_PWD, M_OK) are rejected after
   login. File commands are rejected before login. Matches binkd.
 - fix binkp: inbound session with two different passwords in one M_ADR
