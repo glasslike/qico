@@ -121,13 +121,11 @@ cp -a systemd "$stage/systemd"
 step "Write file_id.diz"
 diz="$stage/file_id.diz"
 {
-	printf 'Qico %s Debian 12 (%s)\n' "$version" "$arch"
-	printf 'FTN mailer: BinkP, EMSI, Hydra, Janus\n'
+	printf 'qico %s, debian 12 (%s)\n' "$version" "$arch"
+	printf '\n'
+	printf 'FTN mailer: BinkP, ifcico, modem\n'
 	printf 'Binaries: qico (perl), qctl, qcc\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
-	printf 'Samples: conf, passwd, substs\n'
-	printf 'Units: systemd/\n'
-	printf 'Read README, Changes, LICENSE.\n'
 } > "$diz"
 
 line_no=0
