@@ -1,5 +1,8 @@
-# Any push to dev builds qico on Debian 12 and uploads a binary zip.
-# workflow_dispatch is the same job, started by hand from the Actions tab.
+# The build does not run on push. Start it from the Actions tab:
+# Debian 12 → Run workflow, then pick the branch (dev or master).
+# GitHub only lists that button when this file is on the default
+# branch, and the chosen branch must contain this file too. The run
+# checks out that branch and builds it.
 #
 # The job runs on a GitHub-hosted Ubuntu runner only so that checkout and
 # artifact upload have git and Node. The compile itself is debian:12:
@@ -12,9 +15,6 @@
 name: Debian 12
 
 on:
-  push:
-    branches:
-      - dev
   workflow_dispatch:
 
 jobs:
