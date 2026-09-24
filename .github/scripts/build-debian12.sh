@@ -14,8 +14,8 @@
 #
 # On success the script leaves one zip under dist/:
 #   qico-<version>-debian12-<arch>-<sha>.zip
-# containing qico, qctl, qcc, file_id.diz, README, Changes, the
-# three sample configs, and the systemd/ directory (units and its
+# containing qico, qctl, qcc, file_id.diz, README, Changes, LICENSE,
+# the three sample configs, and the systemd/ directory (units and its
 # README). The zip is the Actions artifact.
 
 set -euo pipefail
@@ -104,7 +104,7 @@ step "Stage stripped binaries, docs, samples, and systemd"
 install -m 755 src/qico src/qctl src/qcc "$stage/"
 strip --strip-unneeded "$stage/qico" "$stage/qctl" "$stage/qcc"
 
-install -m 644 README Changes \
+install -m 644 README Changes LICENSE \
 	qico.conf.sample qico.passwd.sample qico.substs.sample \
 	"$stage/"
 
@@ -127,7 +127,7 @@ diz="$stage/file_id.diz"
 	printf 'Source %s %s UTC\n' "$sha" "$when"
 	printf 'Samples: conf, passwd, substs\n'
 	printf 'Units: systemd/\n'
-	printf 'Read README and Changes first.\n'
+	printf 'Read README, Changes, LICENSE.\n'
 } > "$diz"
 
 line_no=0
