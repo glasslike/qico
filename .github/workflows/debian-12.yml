@@ -1,0 +1,58 @@
+# Any push to dev builds qico on Debian 12 and uploads a binary zip.
+# workflow_dispatch is the same job, started by hand from the Actions tab.
+#
+# The job runs on a GitHub-hosted Ubuntu runner only so that checkout and
+# artifact upload have git and Node. The compile itself is debian:12:
+# configure runs native test programs (AC_TRY_RUN) and must not be
+# cross-compiled. amd64 is the runner's own platform. arm64 is the same
+# debian:12 image under QEMU: gcc, the test programs, and the finished
+# binaries are all aarch64. Debian's name for that architecture is arm64;
+# uname -m prints aarch64. See .github/scripts/build-debian12.sh.
+
+name: Debian 12
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: debian-12-${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # binfmt_misc on the amd64 runner, so the arm64 container can execute
+      # the aarch64 binaries that configure builds. The amd64 job does not
+      # need it. Docker Desktop already registers this locally.
+      - name: Register QEMU for arm64
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build and pack in Debian 12
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "${{ github.workspace }}:/src" \
+            -w /src \
+            debian:12 \
+            bash /src/.github/scripts/build-debian12.sh
+
+      - name: Upload binary drop
+        uses: actions/upload-artifact@v4
+        with:
+          name: qico-debian12-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
