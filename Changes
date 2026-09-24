@@ -1,5 +1,5 @@
-Unreleased
-~~~~~~~~~~
+Version 0.60.1-dev
+~~~~~~~~~~~~~~~~~~
 - fix [security] binkp: handshake commands (M_ADR, M_PWD, M_OK) are
   rejected after login. File commands are rejected before login.
   Matches binkd.
