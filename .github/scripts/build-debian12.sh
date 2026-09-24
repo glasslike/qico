@@ -14,8 +14,9 @@
 #
 # On success the script leaves one zip under dist/:
 #   qico-<version>-debian12-<arch>-<sha>.zip
-# containing qico, qctl, qcc, file_id.diz, README, Changes, and the
-# three sample configs. The zip is the Actions artifact.
+# containing qico, qctl, qcc, file_id.diz, README, Changes, LICENSE,
+# the three sample configs, and the systemd/ directory (units and its
+# README). The zip is the Actions artifact.
 
 set -euo pipefail
 
@@ -99,13 +100,21 @@ mkdir -p "$stage"
 
 # Stage copies, then strip those copies. The build tree stays unstripped
 # so a failed link is still debuggable in the Actions log.
-step "Stage stripped binaries, README, Changes, and samples"
+step "Stage stripped binaries, docs, samples, and systemd"
 install -m 755 src/qico src/qctl src/qcc "$stage/"
 strip --strip-unneeded "$stage/qico" "$stage/qctl" "$stage/qcc"
 
-install -m 644 README Changes \
+install -m 644 README Changes LICENSE \
 	qico.conf.sample qico.passwd.sample qico.substs.sample \
 	"$stage/"
+
+# The whole unit directory, not a picked subset: sockets, template
+# services, qico.service, qico.target, and systemd/README.md.
+if [ ! -d systemd ]; then
+	echo "systemd directory is missing" >&2
+	exit 1
+fi
+cp -a systemd "$stage/systemd"
 
 # Classic BBS descriptor: ASCII, at most 10 lines, 45 columns.
 # Written at pack time so the version and commit stay in step with the zip.
@@ -117,7 +126,8 @@ diz="$stage/file_id.diz"
 	printf 'Binaries: qico (perl), qctl, qcc\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
 	printf 'Samples: conf, passwd, substs\n'
-	printf 'Read README and Changes first.\n'
+	printf 'Units: systemd/\n'
+	printf 'Read README, Changes, LICENSE.\n'
 } > "$diz"
 
 line_no=0
