@@ -40,11 +40,11 @@ Version 0.60.0
 ~~~~~~~~~~~~~~
 - new keyword: `share` <shared-aka> <member1> [member2 ...]
   Binkd-compatible shared AKA for netmail failover.
-- new keyword: `rootdomain` <dns-suffix>
-  Default: binkp.net. Suffix for fN.nN.zZ.<root> (binkd `root-domain`).
 - new keyword: `binkplisted` yes/no. Default: no.
   Nodelist listed-check on BinkP so `if listed`, FREQ listed status
   and /LST work as on EMSI.
+- new keyword: `rootdomain` <dns-suffix>
+  Default: binkp.net. Suffix for fN.nN.zZ.<root> (binkd `root-domain`).
 - nodelist: parse FTS-5001 internet flags (INA, IBN, IFC, IRD). Host
   order matches binkd: subst, then nodelist, then DNS
   fN.nN.zZ.<rootdomain>. `subst ... -` with binkp/ifc no longer skips
@@ -64,13 +64,13 @@ Version 0.60.0
 Version 0.59.2-rpe (Rabarber Pie Edition)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Based on kosfango/qico 0.59.1 plus:
-- Debian 12 / modern toolchain: -fcommon, Perl/ncurses via LDADD, 64-bit MD5.
+- Debian 12 / modern toolchain.
 - aarch64 fix: qcc/qctl getopt uses int (unsigned char broke option parsing).
-- flagexp/flex: reset lexer between if-expression parses so `if protected`
+- flagexp/flex fix: reset lexer between if-expression parses so `if protected`
   selects secure inbound correctly.
 - systemd: qico.target + BinkP socket activation (originate + answer).
 - new keyword: osnametemplate: choose which uname() fields (sysname, release, machine)
-  go into the auto-detected OS ident; BinkP and other consumers unchanged.
+  go into the auto-detected OS ident.
 
 
 Version 0.59.1
