@@ -31,14 +31,14 @@ jobs:
             platform: linux/arm64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # binfmt_misc on the amd64 runner, so the arm64 container can execute
       # the aarch64 binaries that configure builds. The amd64 job does not
       # need it. Docker Desktop already registers this locally.
       - name: Register QEMU for arm64
         if: matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 
@@ -50,9 +50,14 @@ jobs:
             debian:12 \
             bash /src/.github/scripts/build-debian12.sh
 
+      # archive: false uploads the zip as itself. The default wraps it
+      # again and names the download qico-debian12-<arch>.zip, which is
+      # not the name build-debian12.sh put on the drop. With archive
+      # false the artifact name is the filename:
+      # qico-<version>-debian12-<arch>-<sha>.zip
       - name: Upload binary drop
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: qico-debian12-${{ matrix.arch }}
           path: dist/*.zip
+          archive: false
           if-no-files-found: error
