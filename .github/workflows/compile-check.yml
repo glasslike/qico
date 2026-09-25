@@ -1,6 +1,9 @@
-# Per-commit gate: does the tree still compile? Runs on every push and
-# on pull requests, unlike the Debian 12 and NetBSD workflows, which are
-# started by hand or by a release and produce downloadable archives.
+# Per-commit gate: does the tree still compile? Runs on every push to a
+# working branch and on pull requests, unlike the two build workflows,
+# which are started by hand or by a release and produce archives.
+#
+# master is excluded: what lands there is already merged, and it was
+# compiled on the branch it came from. Run it there by hand if needed.
 #
 # Debian 12 amd64 only, and nothing is packaged. That is the fastest
 # combination we have: the runner's own architecture, so no QEMU, and
@@ -12,6 +15,8 @@ name: Compile on Debian 12
 
 on:
   push:
+    branches-ignore:
+      - master
   pull_request:
   workflow_dispatch:
 
