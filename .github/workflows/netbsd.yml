@@ -1,5 +1,5 @@
 # The build does not run on push. Two ways to start it:
-#   Actions → NetBSD → Run workflow, then pick dev or master.
+#   Actions → Build on NetBSD 11 → Run workflow, then pick dev or master.
 #   Publish a release. GitHub reads this file from the default branch
 #   and checks out the release tag, then attaches the zip next to the
 #   source archives. A draft does not start a build; publishing it does.
@@ -13,7 +13,7 @@
 # (AC_TRY_RUN), so this is a native build, not a cross-compile.
 # See .github/scripts/build-netbsd.sh.
 
-name: NetBSD
+name: Build on NetBSD 11
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ on:
 
 jobs:
   build:
-    name: netbsd-11
+    name: Build on NetBSD 11 (amd64)
     # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 on
     # 2026-10-19. The host only supplies QEMU for the guest, so the drop
     # does not depend on it, but the move should be a deliberate commit.

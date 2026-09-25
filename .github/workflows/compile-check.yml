@@ -8,7 +8,7 @@
 # drop as well, because the configure flags are the same.
 # See .github/scripts/compile-check.sh.
 
-name: Compile check
+name: Compile on Debian 12
 
 on:
   push:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   compile:
-    name: debian-12-amd64
+    name: Compile on Debian 12 (amd64)
     # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 on
     # 2026-10-19. The host only supplies Docker, so the result does not
     # depend on it, but the move should be a deliberate commit.
