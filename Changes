@@ -14,7 +14,10 @@ Version 0.60.1
   written to the log.
 - fix [security] binkp: a short fread/fwrite is an error. M_GOT is not
   sent for a file that was not stored.
-- fix binkp: identity NULs recode a copy, not the config.
+- fix binkp: the M_NUL identity lines (SYS, ZYZ, LOC, NDL, PHN) recode
+  a copy. Recoding wrote into the config itself, so a long-running
+  daemon sent double-encoded station and sysop names from the second
+  session on.
 - fix "if date": the day in the condition was compared with the day of the year.
 - fix binkp file time: a UTC timestamp was shifted by the local timezone.
   BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
