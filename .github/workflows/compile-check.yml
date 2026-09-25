@@ -1,0 +1,40 @@
+# Per-commit gate: does the tree still compile? Runs on every push to a
+# working branch and on pull requests, unlike the two build workflows,
+# which are started by hand or by a release and produce archives.
+#
+# master is excluded: what lands there is already merged, and it was
+# compiled on the branch it came from. Run it there by hand if needed.
+#
+# Debian 12 amd64 only, and nothing is packaged. That is the fastest
+# combination we have: the runner's own architecture, so no QEMU, and
+# about half a minute end to end. A break here is a break in the release
+# drop as well, because the configure flags are the same.
+# See .github/scripts/compile-check.sh.
+
+name: Compile on Debian 12
+
+on:
+  push:
+    branches-ignore:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    name: Compile on Debian 12 (amd64)
+    # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 on
+    # 2026-10-19. The host only supplies Docker, so the result does not
+    # depend on it, but the move should be a deliberate commit.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compile in Debian 12
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -w /src \
+            debian:12 \
+            bash /src/.github/scripts/compile-check.sh

@@ -14,9 +14,9 @@
 #
 # On success the script leaves one zip under dist/:
 #   qico-<version>-debian12-<arch>-<sha>.zip
-# containing qico, qctl, qcc, file_id.diz, README, Changes, LICENSE,
-# the three sample configs, and the systemd/ directory (units and its
-# README). The zip is the Actions artifact.
+# containing qico, qctl, qcc, file_id.diz, requirements.txt, README,
+# Changes, LICENSE, the three sample configs, and the systemd/ directory
+# (units and its README). The zip is the Actions artifact.
 
 set -euo pipefail
 
@@ -116,19 +116,47 @@ if [ ! -d systemd ]; then
 fi
 cp -a systemd "$stage/systemd"
 
+# The dynamic libraries each binary was linked against, read from the ELF
+# NEEDED entries rather than from the package list: this is what the target
+# host actually has to provide. readelf ships with binutils, same package
+# as the strip above.
+step "Write requirements.txt"
+needed() {
+	readelf -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'
+}
+{
+	printf 'Runtime libraries for this build (Debian 12, %s).\n' "$arch"
+	printf 'Install them on the target host before running.\n'
+	for bin in qico qctl qcc; do
+		printf '\n%s:\n' "$bin"
+		needed "$stage/$bin" | sed 's/^/  /'
+	done
+} > "$stage/requirements.txt"
+
+# The compiler that produced the binaries above, as "gcc 12.2.0". The last
+# line of -v is "gcc version 12.2.0 (Debian ...)" and names the real
+# compiler; --version would say "cc" here, since cc is a symlink to gcc.
+cc_bin="${CC:-cc}"
+cc_ident="$("$cc_bin" -v 2>&1 | sed -n 's/^\(.*\) version \([0-9][^ ]*\).*/\1 \2/p' | tail -n 1)"
+if [ -z "$cc_ident" ]; then
+	cc_ident="unknown"
+fi
+
 # Classic BBS descriptor: ASCII, at most 10 lines, 45 columns.
 # Written at pack time so the version and commit stay in step with the zip.
+# Built here with LF so the width check below counts real columns; the
+# file itself is converted to CRLF afterwards, as a DIZ is a DOS text file.
 step "Write file_id.diz"
 diz="$stage/file_id.diz"
+diz_lf="$stage/.file_id.diz.lf"
 {
-	printf 'Qico %s Debian 12 (%s)\n' "$version" "$arch"
-	printf 'FTN mailer: BinkP, EMSI, Hydra, Janus\n'
+	printf 'qico %s, debian 12 (%s)\n' "$version" "$arch"
+	printf '\n'
+	printf 'FTN mailer: BinkP, ifcico, modem\n'
 	printf 'Binaries: qico (perl), qctl, qcc\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
-	printf 'Samples: conf, passwd, substs\n'
-	printf 'Units: systemd/\n'
-	printf 'Read README, Changes, LICENSE.\n'
-} > "$diz"
+	printf 'Compiler: %s\n' "$cc_ident"
+} > "$diz_lf"
 
 line_no=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -138,11 +166,15 @@ while IFS= read -r line || [ -n "$line" ]; do
 		echo "file_id.diz line $line_no is ${#line} columns (max 45): $line" >&2
 		exit 1
 	fi
-done < "$diz"
+done < "$diz_lf"
 if [ "$line_no" -gt 10 ]; then
 	echo "file_id.diz has $line_no lines (max 10)" >&2
 	exit 1
 fi
+
+# awk, not sed: a "\r" in a sed replacement is not portable across seds.
+awk '{ printf "%s\r\n", $0 }' "$diz_lf" > "$diz"
+rm -f "$diz_lf"
 
 # Paths inside the archive are relative to dist/, so unzip yields one directory.
 step "Pack ${name}.zip"

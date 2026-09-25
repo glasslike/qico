@@ -1,5 +1,5 @@
 # The build does not run on push. Two ways to start it:
-#   Actions → Debian 12 → Run workflow, then pick dev or master.
+#   Actions → Build on Debian 12 → Run workflow, then pick dev or master.
 #   Publish a release. GitHub reads this file from the default branch
 #   and checks out the release tag, then attaches the zips next to the
 #   source archives. A draft does not start a build; publishing it does.
@@ -14,7 +14,7 @@
 # binaries are all aarch64. Debian's name for that architecture is arm64;
 # uname -m prints aarch64. See .github/scripts/build-debian12.sh.
 
-name: Debian 12
+name: Build on Debian 12
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ on:
 
 jobs:
   build:
-    name: debian-12-${{ matrix.arch }}
+    name: Build on Debian 12 (${{ matrix.arch }})
     # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 on
     # 2026-10-19. The host only supplies Docker and QEMU, so the drop
     # does not depend on it, but the move should be a deliberate commit.
