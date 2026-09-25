@@ -1,4 +1,4 @@
-# Debian 12 / modern toolchain notes
+# Modern toolchain notes
 
 The commands below are the canonical recipe (Debian 12). The same
 `./autogen.sh && ./configure && make` sequence also compiled and tested on Debian 13, Ubuntu 24.04, Fedora 44, and Alpine 3.20 (musl), Raspberry Pi OS (aarch64).
