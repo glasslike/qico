@@ -133,11 +133,14 @@ needed() {
 	done
 } > "$stage/requirements.txt"
 
-# The compiler that produced the binaries above. -dumpfullversion is the
-# bare number; --version would be a whole sentence, too wide for the DIZ.
+# The compiler that produced the binaries above, as "gcc 12.2.0". The last
+# line of -v is "gcc version 12.2.0 (Debian ...)" and names the real
+# compiler; --version would say "cc" here, since cc is a symlink to gcc.
 cc_bin="${CC:-cc}"
-cc_name="$("$cc_bin" --version 2>/dev/null | head -n 1 | awk '{print $1}')"
-cc_version="$("$cc_bin" -dumpfullversion 2>/dev/null || "$cc_bin" -dumpversion 2>/dev/null || echo unknown)"
+cc_ident="$("$cc_bin" -v 2>&1 | sed -n 's/^\(.*\) version \([0-9][^ ]*\).*/\1 \2/p' | tail -n 1)"
+if [ -z "$cc_ident" ]; then
+	cc_ident="unknown"
+fi
 
 # Classic BBS descriptor: ASCII, at most 10 lines, 45 columns.
 # Written at pack time so the version and commit stay in step with the zip.
@@ -152,7 +155,7 @@ diz_lf="$stage/.file_id.diz.lf"
 	printf 'FTN mailer: BinkP, ifcico, modem\n'
 	printf 'Binaries: qico (perl), qctl, qcc\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
-	printf 'Compiler: %s %s\n' "$cc_name" "$cc_version"
+	printf 'Compiler: %s\n' "$cc_ident"
 } > "$diz_lf"
 
 line_no=0
