@@ -27,7 +27,10 @@ on:
 jobs:
   build:
     name: debian-12-${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 on
+    # 2026-10-19. The host only supplies Docker and QEMU, so the drop
+    # does not depend on it, but the move should be a deliberate commit.
+    runs-on: ubuntu-24.04
     # gh release upload needs to add assets. Manual runs only upload
     # Actions artifacts, which the same token can do with contents: read,
     # but one permission set covers both triggers.
