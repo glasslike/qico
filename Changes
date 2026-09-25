@@ -1,5 +1,36 @@
-Unreleased
-~~~~~~~~~~
+Version 0.60.1
+~~~~~~~~~~~~~~
+- fix [security] binkp: handshake commands (M_ADR, M_PWD, M_OK) are
+  rejected after login. File commands are rejected before login.
+  Matches binkd.
+- fix [security] binkp: inbound session with two different passwords
+  in one M_ADR is refused. On our call the conflicting aka is dropped.
+- fix [security] binkp: plaintext password compare is case-sensitive.
+  CRAM-MD5 hex is still case-insensitive. Failed passwords are not
+  written to the log.
+- fix [security] binkp: a short fread/fwrite is an error. M_GOT is not
+  sent for a file that was not stored.
+- fix binkp: identity NULs recode a copy, not the config.
+- fix "if date": the day in the condition was compared with the day of the year.
+- fix binkp file time: a UTC timestamp was shifted by the local timezone.
+  BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
+  and Janus carry local time, so the zone offset is still applied.
+- fix outbound lock: session end removed .bsy/.csy files this process
+  had not created. A node is locked in every configured outbound or
+  in none, and only the files that address created are removed.
+- new keyword: `kill-old-bsy` <time>. Default: off.
+  A .bsy/.csy older than this is removed, including an empty file
+  or one whose PID now belongs to another process. A live session
+  refreshes its own busy files about once a minute.
+- fix [security] binkp: on an incoming call, a busy password-protected
+  aka ends the session with M_BSY. On our own call that aka is skipped
+  and the session continues with the others.
+- fix longrescan: the counter only increased, so a full ?lo recount
+  never repeated. Every Nth scan now recounts. 0 still means off.
+- inbound modem: the log line name comes from mgetty DEVICE, then
+  from ttyname. A missing name is "modem", not a NULL basename.
+- fix showpkt: from/to names are logged up to 36 bytes and recoded to
+  the local charset. A field with no NUL stops the listing.
 - systemd: inbound ifcico on TCP 60179 (`qico-ifc.socket` /
   `qico-ifc@.service`). `qico.target` starts it with the originate
   daemon and BinkP (24554).
@@ -9,11 +40,11 @@ Version 0.60.0
 ~~~~~~~~~~~~~~
 - new keyword: `share` <shared-aka> <member1> [member2 ...]
   Binkd-compatible shared AKA for netmail failover.
-- new keyword: `rootdomain` <dns-suffix>
-  Default: binkp.net. Suffix for fN.nN.zZ.<root> (binkd `root-domain`).
 - new keyword: `binkplisted` yes/no. Default: no.
   Nodelist listed-check on BinkP so `if listed`, FREQ listed status
   and /LST work as on EMSI.
+- new keyword: `rootdomain` <dns-suffix>
+  Default: binkp.net. Suffix for fN.nN.zZ.<root> (binkd `root-domain`).
 - nodelist: parse FTS-5001 internet flags (INA, IBN, IFC, IRD). Host
   order matches binkd: subst, then nodelist, then DNS
   fN.nN.zZ.<rootdomain>. `subst ... -` with binkp/ifc no longer skips
@@ -33,13 +64,13 @@ Version 0.60.0
 Version 0.59.2-rpe (Rabarber Pie Edition)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Based on kosfango/qico 0.59.1 plus:
-- Debian 12 / modern toolchain: -fcommon, Perl/ncurses via LDADD, 64-bit MD5.
+- Debian 12 / modern toolchain.
 - aarch64 fix: qcc/qctl getopt uses int (unsigned char broke option parsing).
-- flagexp/flex: reset lexer between if-expression parses so `if protected`
+- flagexp/flex fix: reset lexer between if-expression parses so `if protected`
   selects secure inbound correctly.
 - systemd: qico.target + BinkP socket activation (originate + answer).
 - new keyword: osnametemplate: choose which uname() fields (sysname, release, machine)
-  go into the auto-detected OS ident; BinkP and other consumers unchanged.
+  go into the auto-detected OS ident.
 
 
 Version 0.59.1

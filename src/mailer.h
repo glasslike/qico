@@ -98,6 +98,7 @@ int	emsi_recv(int, ninfo_t *);
 
 
 /* protfm.c */
+void	prot_ftime_utc(int);
 int	rxopen(char *, time_t, off_t, FILE **);
 int	rxclose(FILE **, int);
 FILE	*txopen(char *, char *);

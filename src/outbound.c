@@ -57,6 +57,8 @@
  */
 
 #include "headers.h"
+#include <utime.h>
+#include <ctype.h>
 
 static int bso_defzone = 2;
 static char *bso_base = NULL;
@@ -547,6 +549,190 @@ int outbound_rescan(qeach_t each, int rslow)
 }
 
 
+/*
+ * Busy files this process created. Touched while kill-old-bsy is on
+ * so a long session is not treated as a leftover from a crash.
+ * The list is per process: the daemon child locks after fork.
+ */
+static slist_t *our_busy;
+
+/* How often a live session refreshes its own .bsy/.csy. */
+#define BUSY_TOUCH_SEC	60
+
+
+/*
+ * kill-old-bsy period in seconds. 0 means the option is off
+ * (unset, empty, or zero), which is the default. A plain number
+ * is seconds. One suffix is accepted: s, m, h or d.
+ * Returns 0 when the option is off. Returns -1 when the text
+ * is not a period; that value is cached too.
+ */
+static int old_bsy_seconds(void)
+{
+	static const char *prev;
+	static int sec;
+	const char *s, *p;
+	char *end;
+	long n, mult;
+	int ch;
+
+	s = cfgs( CFG_KILL_OLD_BSY );
+	if ( s == prev )
+		return sec;
+	prev = s;
+	sec = 0;
+	if ( !s )
+		return 0;
+
+	p = s;
+	while ( *p == ' ' || *p == '\t' )
+		p++;
+	if ( !*p )
+		return 0;
+
+	n = strtol( p, &end, 10 );
+	if ( end == p || n < 0 ) {
+		sec = -1;
+		return sec;
+	}
+
+	while ( *end == ' ' || *end == '\t' )
+		end++;
+	ch = tolower( (unsigned char) *end );
+	if ( ch ) {
+		if ( ch == 's' )
+			mult = 1;
+		else if ( ch == 'm' )
+			mult = 60;
+		else if ( ch == 'h' )
+			mult = 3600;
+		else if ( ch == 'd' )
+			mult = 86400;
+		else {
+			sec = -1;
+			return sec;
+		}
+		end++;
+		if ( n > 2147483647L / mult ) {
+			sec = -1;
+			return sec;
+		}
+		n *= mult;
+	}
+	while ( *end == ' ' || *end == '\t' )
+		end++;
+	if ( *end || n > 2147483647L ) {
+		sec = -1;
+		return sec;
+	}
+
+	sec = (int) n;
+	return sec;
+}
+
+
+int outbound_check_old_bsy(void)
+{
+	const char *s = cfgs( CFG_KILL_OLD_BSY );
+
+	if ( !s || !*s )
+		return 1;
+	if ( old_bsy_seconds() < 0 ) {
+		write_log( "bad kill-old-bsy value '%s'", s );
+		return 0;
+	}
+	return 1;
+}
+
+
+static void our_busy_add(const char *path)
+{
+	if ( path && *path )
+		slist_add( &our_busy, path );
+}
+
+
+static void our_busy_drop(const char *path)
+{
+	slist_t **pp, *t;
+
+	if ( !path )
+		return;
+	for ( pp = &our_busy; *pp; pp = &(*pp)->next ) {
+		if ( (*pp)->str && !strcmp( (*pp)->str, path )) {
+			t = *pp;
+			*pp = t->next;
+			xfree( t->str );
+			xfree( t );
+			return;
+		}
+	}
+}
+
+
+/*
+ * Remember the name currently in the static busy-path buffer.
+ * The next get_busy_name() overwrites that buffer.
+ */
+static void our_busy_add_current(void)
+{
+	our_busy_add( out_internal_tmp );
+}
+
+
+static void our_busy_drop_current(void)
+{
+	our_busy_drop( out_internal_tmp );
+}
+
+
+void outbound_touch_busy(void)
+{
+	static time_t last_touch;
+	time_t now;
+	slist_t *p;
+
+	if ( old_bsy_seconds() <= 0 )
+		return;
+
+	now = time( NULL );
+	if ( last_touch && now - last_touch < BUSY_TOUCH_SEC )
+		return;
+	last_touch = now;
+
+	for ( p = our_busy; p; p = p->next ) {
+		if ( p->str && utime( p->str, NULL ))
+			write_log( "can't touch '%s': %s", p->str, strerror( errno ));
+	}
+}
+
+
+/*
+ * Same answer as islocked(), except a .bsy/.csy older than
+ * kill-old-bsy is removed first. That covers an empty file and a
+ * file whose PID now belongs to some other live process. Dead PIDs
+ * are still dropped immediately by islocked(). Other lock files
+ * (pidfile, nodelist, tty) do not come through here.
+ */
+static int out_busy(const char *path)
+{
+	struct stat sb;
+	int maxage;
+
+	if ( !path || !*path )
+		return 0;
+
+	maxage = old_bsy_seconds();
+	if ( maxage > 0 && stat( path, &sb ) == 0
+			&& time( NULL ) - sb.st_mtime > maxage ) {
+		write_log( "removing old busy file %s", path );
+		lunlink( path );
+		return 0;
+	}
+	return islocked( path );
+}
+
+
 static int out_lock(int type, const ftnaddr_t *adr, int l)
 {
 	char *obn = get_busy_name( type, adr, 'b' );
@@ -556,7 +742,7 @@ static int out_lock(int type, const ftnaddr_t *adr, int l)
 
 	mkdirs( obn );
 
-	if ( islocked( obn ))
+	if ( out_busy( obn ))
 		return 0;
     
 	if ( l == LCK_s )
@@ -565,10 +751,27 @@ static int out_lock(int type, const ftnaddr_t *adr, int l)
 	if ( l == LCK_t )
 		return getpid();
 
-	if ( islocked( get_busy_name( type, adr, 'c' )))
+	if ( out_busy( get_busy_name( type, adr, 'c' )))
 		return 0;
     
 	return lockpid( out_internal_tmp );
+}
+
+
+/*
+ * Remove the one busy file out_lock() creates for this flavor.
+ * LCK_c is a .csy, anything else we lock is a .bsy. The name is
+ * built in the static buffer and must be unlinked before the
+ * next get_busy_name() call.
+ */
+static void out_unlink_busy(int type, const ftnaddr_t *addr, int l)
+{
+	char kind = ( l == LCK_c ) ? 'c' : 'b';
+
+	if ( get_busy_name( type, addr, kind )) {
+		our_busy_drop_current();
+		lunlink( out_internal_tmp );
+	}
 }
 
 
@@ -577,61 +780,116 @@ static int out_lock(int type, const ftnaddr_t *adr, int l)
  */
 int outbound_addr_busy(const ftnaddr_t *addr)
 {
-	if ( islocked( get_busy_name( ASO, addr, 'b' )))
+	if ( out_busy( get_busy_name( ASO, addr, 'b' )))
 		return 1;
 
-	if ( islocked( get_busy_name( ASO, addr, 'c' )))
+	if ( out_busy( get_busy_name( ASO, addr, 'c' )))
 		return 1;
 
-	if ( islocked( get_busy_name( BSO, addr, 'b' )))
+	if ( out_busy( get_busy_name( BSO, addr, 'b' )))
 		return 1;
 
-	if ( islocked( get_busy_name( BSO, addr, 'c' ) ))
+	if ( out_busy( get_busy_name( BSO, addr, 'c' ) ))
 		return 1;
 
 	return 0;
 }
 
 
-int outbound_locknode(const ftnaddr_t *addr, int l)
+int outbound_locknode(ftnaddr_t *addr, int l)
 {
-	int rc = 0;
+	int got = 0;
 
-	if ( aso_base && out_lock( ASO, addr, l ))
-		rc |= ASO;
-	
-	if ( bso_base && out_lock( BSO, addr, l ))
-		rc |= BSO;
-	
-	return rc;
-}
+	if ( !addr )
+		return 0;
 
-
-int outbound_unlocknode(const ftnaddr_t *addr, int l)
-{
-	if ( l == LCK_t )
+	/*
+	 * A test creates no file and takes no ownership. Every
+	 * configured outbound must be free. One free tree is not
+	 * enough when the other still has a session file.
+	 */
+	if ( l == LCK_t ) {
+		if ( !aso_base && !bso_base )
+			return 0;
+		if ( aso_base && !out_lock( ASO, addr, LCK_t ))
+			return 0;
+		if ( bso_base && !out_lock( BSO, addr, LCK_t ))
+			return 0;
 		return 1;
+	}
 
+	/* This object already owns its files. Do not create a second set. */
+	if ( addr->locked )
+		return addr->locked;
+
+	if ( !aso_base && !bso_base ) {
+		addr->locked = 0;
+		return 0;
+	}
+
+	/*
+	 * Both configured outbounds, or neither. A lock that covers
+	 * only one tree leaves the other free for a second mailer.
+	 */
 	if ( aso_base ) {
-		if ( get_busy_name( ASO, addr, 'b' ))
-			lunlink( out_internal_tmp );
-
-		if ( get_busy_name( ASO, addr, 'c' ))
-			lunlink( out_internal_tmp );
+		if ( !out_lock( ASO, addr, l )) {
+			addr->locked = 0;
+			return 0;
+		}
+		our_busy_add_current();
+		got |= ASO;
 	}
 
 	if ( bso_base ) {
-		if ( get_busy_name( BSO, addr, 'b' ))
-			lunlink( out_internal_tmp );
+		if ( !out_lock( BSO, addr, l )) {
+			if ( got & ASO )
+				out_unlink_busy( ASO, addr, l );
+			addr->locked = 0;
+			return 0;
+		}
+		our_busy_add_current();
+		got |= BSO;
+	}
 
-		if ( get_busy_name( BSO, addr, 'c' ))
-			lunlink( out_internal_tmp );
+	if ( l == LCK_c )
+		got |= LCK_HELD_CSY;
+
+	addr->locked = got;
+	return got;
+}
+
+
+int outbound_unlocknode(ftnaddr_t *addr, int l)
+{
+	int held;
+	char kind;
+
+	/* LCK_t never created a file. An address we did not lock is left alone. */
+	if ( l == LCK_t || !addr || !addr->locked )
+		return 1;
+
+	/*
+	 * Drop ownership before unlinking. A second unlock, or an
+	 * unlock from a copy, then cannot remove a file someone else
+	 * created under the same name.
+	 */
+	held = addr->locked;
+	addr->locked = 0;
+	kind = ( held & LCK_HELD_CSY ) ? 'c' : 'b';
+
+	if (( held & ASO ) && get_busy_name( ASO, addr, kind )) {
+		our_busy_drop_current();
+		lunlink( out_internal_tmp );
+	}
+
+	if (( held & BSO ) && get_busy_name( BSO, addr, kind )) {
+		our_busy_drop_current();
+		lunlink( out_internal_tmp );
 
 		if ( addr->z != bso_defzone )
 			rmdirs( out_internal_tmp );
-		else if ( addr->p ) {
+		else if ( addr->p )
 			rmdir( out_internal_tmp );
-		}
 	}
 
 	return 1;

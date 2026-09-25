@@ -58,6 +58,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"inbound",C_PATH,1,NULL,NULL},
 	{"jrxwin",C_INT,0,NULL,"0"},
 	{"jtxwin",C_INT,0,NULL,"0"},
+	{"kill-old-bsy",C_STR,2,NULL,NULL},
 	{"killbadpkt",C_YESNO,0,NULL,"no"},
 	{"localcp",C_PATH,0,NULL,"none"},
 	{"lockdir",C_PATH,0,NULL,"/tmp"},

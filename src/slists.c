@@ -117,7 +117,7 @@ void aslist_kill(aslist_t **l)
 }
 
 
-void falist_add(falist_t **l, const ftnaddr_t *a)
+falist_t *falist_add(falist_t **l, const ftnaddr_t *a)
 {
 	falist_t **t;
 
@@ -125,7 +125,13 @@ void falist_add(falist_t **l, const ftnaddr_t *a)
 
 	*t = (falist_t *) xmalloc( sizeof( falist_t ));
 	(*t)->next = NULL;
+	/*
+	 * The new node does not own busy files. addr_cpy() clears
+	 * locked. A caller that locked the source address must move
+	 * the flag onto this node if session end is what unlocks it.
+	 */
 	addr_cpy( &(*t)->addr, a );
+	return *t;
 }
 
 

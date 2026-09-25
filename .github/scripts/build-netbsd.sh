@@ -9,6 +9,17 @@
 # NetBSD's /bin/sh is not bash: this file is POSIX sh, and the build uses
 # gmake because the system make is not GNU make.
 #
+# Perl hooks are deliberately off here, unlike the Debian drop. pkgsrc
+# ships libperl.so without a version in the SONAME, inside a directory
+# named after the exact perl release
+# (/usr/pkg/lib/perl5/5.44.0/x86_64-netbsd-thread-multi/CORE). A binary
+# linked there runs only on a host with that same perl: another release
+# means the directory is missing, and forcing the loader at a different
+# libperl.so would meet a different ABI. That is fine for a build you
+# compile yourself, but not for an archive handed to other people, so
+# this drop does not link libperl at all. Debian has no such problem:
+# there the library is libperl.so.5.36, versioned and in a standard path.
+#
 # On success the script leaves one zip under dist/:
 #   qico-<version>-netbsd<major>-<arch>-<sha>.zip
 # containing qico, qctl, qcc, file_id.diz, requirements.txt, README,
@@ -27,9 +38,11 @@ step() {
 
 step "Install NetBSD build packages"
 # pkgin is listed first because the base image may only have pkg_add.
-# ncurses gives qcc, perl backs --enable-perl, zip packs the drop.
+# ncurses gives qcc, zip packs the drop. perl is not a qico dependency
+# here (see the header), but autoconf and automake are perl scripts, so
+# the package is pulled in either way.
 /usr/sbin/pkg_add -U pkgin git gmake autoconf automake pkgconf \
-	flex bison ncurses perl zip
+	flex bison ncurses zip
 
 # The host owns the synced tree; git in the VM runs as another user and
 # would otherwise refuse it ("dubious ownership"). The stamp in qico -v
@@ -55,8 +68,8 @@ export CPPFLAGS LDFLAGS
 
 step "Generate configure and Makefiles"
 ./autogen.sh
-step "Configure with BinkP and Perl"
-./configure --prefix=/usr/local --enable-binkp --enable-perl
+step "Configure with BinkP, without Perl"
+./configure --prefix=/usr/local --enable-binkp
 
 # The .l/.y in the tree define flaglex_reset. The shipped flaglex.c and
 # flagexp.c do not. flex and bison are installed, so make will rebuild
@@ -70,17 +83,18 @@ rm -f src/flaglex.c src/flagexp.c src/flagexp.h
 step "Compile"
 gmake -j"$(sysctl -n hw.ncpu)"
 
-step "Check that qico, qctl, qcc, and perl.o exist"
+step "Check that qico, qctl and qcc exist"
 for bin in src/qico src/qctl src/qcc; do
 	if [ ! -x "$bin" ]; then
 		echo "missing binary: $bin" >&2
 		exit 1
 	fi
 done
-# configure keeps going if the libperl probe fails. Refuse a drop
-# that was asked for --enable-perl but linked without perl hooks.
-if [ ! -f src/perl.o ]; then
-	echo "perl hooks were not compiled (src/perl.o missing)" >&2
+# The reverse of the Debian check: libperl must not be linked in, or the
+# drop is again tied to one pkgsrc perl release. A stale build tree or a
+# stray --enable-perl would show up here.
+if readelf -d src/qico | grep -q 'NEEDED.*libperl'; then
+	echo "qico is linked against libperl; this drop must not be" >&2
 	exit 1
 fi
 
@@ -128,6 +142,18 @@ needed() {
 		printf '\n%s:\n' "$bin"
 		needed "$stage/$bin" | sed 's/^/  /'
 	done
+	# libncurses comes from pkgsrc, and the loader finds it through this
+	# baked-in path. Printing it turns a "shared object not found" on the
+	# target host into a one-line diagnosis.
+	printf '\nLibrary path recorded in the binaries:\n'
+	readelf -d "$stage/qcc" \
+		| sed -n -e 's/.*(RPATH).*\[\(.*\)\].*/  \1/p' \
+			 -e 's/.*(RUNPATH).*\[\(.*\)\].*/  \1/p'
+	printf '\nOnly qcc needs a package: pkgin install ncurses\n'
+	printf 'qico and qctl use base system libraries only.\n'
+	printf '\nThis build has no Perl hooks: linking libperl would\n'
+	printf 'tie the binary to one pkgsrc perl release. Build from\n'
+	printf 'source with --enable-perl if you need them.\n'
 } > "$stage/requirements.txt"
 
 # The compiler that produced the binaries above, as "gcc 12.4.0". The last
@@ -150,7 +176,7 @@ diz_lf="$stage/.file_id.diz.lf"
 	printf 'qico %s, netbsd %s (%s)\n' "$version" "$release" "$arch"
 	printf '\n'
 	printf 'FTN mailer: BinkP, ifcico, modem\n'
-	printf 'Binaries: qico (perl), qctl, qcc\n'
+	printf 'Binaries: qico, qctl, qcc (no perl)\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
 	printf 'Compiler: %s\n' "$cc_ident"
 } > "$diz_lf"

@@ -116,6 +116,21 @@ static char *estimatedtime(off_t size, int cps, unsigned long baud)
 	return et;
 }
 
+/*
+ * BinkP M_FILE time is Unix UTC (the binkp spec, same as binkd).
+ * EMSI, Zmodem, Hydra and Janus carry local time, so those sessions
+ * add the zone offset on send and subtract it on receive.
+ *
+ * A process runs one session. session() sets this before any file is
+ * opened, and every transfer goes through rxopen() / txopen().
+ */
+static int ftime_is_utc;
+
+void prot_ftime_utc(int on)
+{
+	ftime_is_utc = on ? 1 : 0;
+}
+
 int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 {
 	struct stat sb;
@@ -129,7 +144,7 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
  	recvf.start=time(NULL);
 	xfree(recvf.fname);
  	recvf.fname=xstrdup(bn);
-	recvf.mtime=rtime-gmtoff(recvf.start);
+	recvf.mtime = ftime_is_utc ? rtime : rtime - gmtoff( recvf.start );
 	recvf.ftot=rsize;
 	if(recvf.toff+rsize > recvf.ttot) recvf.ttot+=rsize;
 	recvf.nf++;if(recvf.nf>recvf.allf) recvf.allf++;
@@ -311,7 +326,7 @@ FILE *txopen(char *tosend, char *sendas)
 	sendf.ftot=sb.st_size;
 	sendf.foff=sendf.soff=0;
 	sendf.start=time(NULL);
-	sendf.mtime=sb.st_mtime+gmtoff(sendf.start);
+	sendf.mtime = ftime_is_utc ? sb.st_mtime : sb.st_mtime + gmtoff( sendf.start );
 	if(sendf.toff+sb.st_size > sendf.ttot) sendf.ttot+=sb.st_size;
 	sendf.nf++;if(sendf.nf>sendf.allf) sendf.allf++;
 	IFPerl({char *p=perl_on_send(tosend);if(p&&!*p)return NULL;

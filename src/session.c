@@ -493,6 +493,11 @@ void log_rinfo(ninfo_t *e)
         SIZES(e->netmail),SIZEC(e->netmail),SIZES(e->files),SIZEC(e->files));
 }
 
+/*
+ * Lock each remote address, including a shared AKA already added
+ * to the list. A failed lock leaves locked at 0, so session end
+ * does not remove a busy file this process did not create.
+ */
 #define LOG_LOCK_NODE \
     log_rinfo( rnode );                         \
                                                 \
@@ -907,6 +912,8 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
     falist_t *pp;
 
     runtoss = 0;
+    /* BinkP file time is UTC. Other protocols still use local time. */
+    prot_ftime_utc( type == SESSION_BINKP );
     rnode->starttime = 0;
     rnode->realspeed = effbaud = speed;
 
@@ -966,6 +973,7 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
 
     signal( SIGALRM, SIG_DFL );
 
+    /* Each address removes only the busy files it created. */
     for( pp = rnode->addrs; pp; pp = pp->next )
         outbound_unlocknode( &pp->addr, LCK_x );
 

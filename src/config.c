@@ -653,6 +653,8 @@ int readconfig(const char *cfgname)
         write_log("required keyword 'asooutbound' or 'bsooutbound' not defined");
         rc=0;
     }
+    if(!outbound_check_old_bsy())
+        rc=0;
     /* Outbound Hayes/modem is on iff at least one `port' device is
      * listed. There is no --disable-modem: omit every `port' line and
      * the daemon never calls tty_findport() (DEBUG nottyport). IP
