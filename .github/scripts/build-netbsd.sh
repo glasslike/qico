@@ -49,8 +49,21 @@ chmod +x autogen.sh
 # pkgsrc installs under /usr/pkg, which the base compiler does not search.
 # The ncurses headers sit in their own subdirectory, and -R records the
 # library path in the binaries so they still start outside this build.
+#
+# libperl.so is not in /usr/pkg/lib: perl keeps it in its own CORE
+# directory, whose name carries the perl version and the platform triple
+# (.../perl5/5.44.0/x86_64-netbsd-thread-multi/CORE). Without that path
+# in the rpath, qico builds and even runs here — the build VM has the
+# directory in its loader config — but dies on a plain NetBSD host with
+# "shared object libperl.so not found". Ask perl where it is instead of
+# spelling the version out.
+perl_core="$(perl -MConfig -e 'print $Config{archlib}')/CORE"
+if [ ! -d "$perl_core" ]; then
+	echo "perl CORE directory not found: $perl_core" >&2
+	exit 1
+fi
 CPPFLAGS="-I/usr/pkg/include -I/usr/pkg/include/ncurses"
-LDFLAGS="-L/usr/pkg/lib -Wl,-R/usr/pkg/lib"
+LDFLAGS="-L/usr/pkg/lib -Wl,-R/usr/pkg/lib -Wl,-R${perl_core}"
 export CPPFLAGS LDFLAGS
 
 step "Generate configure and Makefiles"
@@ -128,6 +141,15 @@ needed() {
 		printf '\n%s:\n' "$bin"
 		needed "$stage/$bin" | sed 's/^/  /'
 	done
+	# libperl.so and libncurses.so come from pkgsrc, and the loader finds
+	# them through this baked-in path. Printing it turns a "shared object
+	# not found" on the target host into a one-line diagnosis.
+	printf '\nLibrary path recorded in the binaries:\n'
+	readelf -d "$stage/qico" \
+		| sed -n -e 's/.*(RPATH).*\[\(.*\)\].*/  \1/p' \
+			 -e 's/.*(RUNPATH).*\[\(.*\)\].*/  \1/p'
+	printf '\nlibperl.so and libncurses.so ship with the pkgsrc\n'
+	printf 'perl and ncurses packages: pkgin install perl ncurses\n'
 } > "$stage/requirements.txt"
 
 # The compiler that produced the binaries above, as "gcc 12.4.0". The last
