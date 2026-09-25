@@ -1,0 +1,69 @@
+# The build does not run on push. Two ways to start it:
+#   Actions → NetBSD → Run workflow, then pick dev or master.
+#   Publish a release. GitHub reads this file from the default branch
+#   and checks out the release tag, then attaches the zip next to the
+#   source archives. A draft does not start a build; publishing it does.
+# The Run workflow button is listed only when this file is on the
+# default branch, and the chosen branch must contain this file too.
+#
+# GitHub has no NetBSD runner, and the official self-hosted runner has no
+# NetBSD build either. vmactions/netbsd-vm boots a real NetBSD under QEMU
+# inside the Ubuntu runner, syncs the checked-out tree in, runs the build,
+# and syncs dist/ back out. configure runs native test programs
+# (AC_TRY_RUN), so this is a native build, not a cross-compile.
+# See .github/scripts/build-netbsd.sh.
+
+name: NetBSD
+
+on:
+  workflow_dispatch:
+  release:
+    # published covers a normal release and a pre-release. created does
+    # not run for a draft, but it also does not mean the release is public
+    # yet. published is the moment the source archives appear.
+    types: [published]
+
+jobs:
+  build:
+    name: netbsd-11
+    runs-on: ubuntu-latest
+    # gh release upload needs to add assets. Manual runs only upload
+    # Actions artifacts, which the same token can do with contents: read,
+    # but one permission set covers both triggers.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The whole build, including pkg_add, lives in the script so the
+      # same file can be run by hand on a NetBSD box. The action copies
+      # the tree back afterwards (copyback defaults to true), which is
+      # how dist/ reaches the runner for the upload steps below.
+      - name: Build and pack in NetBSD
+        uses: vmactions/netbsd-vm@v1
+        with:
+          release: '11.0'
+          run: |
+            cd "$GITHUB_WORKSPACE"
+            sh .github/scripts/build-netbsd.sh
+
+      # archive: false uploads the zip as itself. The default wraps it
+      # again, which would hide the name build-netbsd.sh put on the drop.
+      # With archive false the artifact name is the filename:
+      # qico-<version>-netbsd<major>-<arch>-<sha>.zip
+      - name: Upload binary drop
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/*.zip
+          archive: false
+          if-no-files-found: error
+
+      # GitHub already attached the source zip and tarball. This adds the
+      # binary drop beside them. --clobber replaces the same filename when
+      # the workflow is re-run for one release.
+      - name: Attach the drop to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.zip --clobber
