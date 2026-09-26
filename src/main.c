@@ -62,6 +62,7 @@
  */
 
 #include "headers.h"
+#include "binlog.h"
 #ifdef HAVE_LOCALE_H
 #include <locale.h>
 #endif
@@ -277,6 +278,12 @@ static void answer_mode(int type)
          * does not fail the build. Do not use OS-name ifdefs here.
          */
         get_hostname( (struct sockaddr *) &sa, ss, host, sizeof( host ));
+        /*
+         * Keep the peer for the binary log only. rnode->host is the
+         * dial/nodelist target and is what config `host' expressions
+         * test, so this address must not be stored there.
+         */
+        binlog_set_peer( host );
         write_log( "remote is %s", host );
         spd = TCP_SPEED;
         tcp_setsockopts( tty_fd );

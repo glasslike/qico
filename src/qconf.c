@@ -14,6 +14,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"autoticskip",C_YESNO,0,NULL,"no"},
 	{"binkplisted",C_YESNO,0,NULL,"no"},
 	{"binkpopt",C_STR,0,NULL,"MB"},
+	{"binlog",C_PATH,0,NULL,NULL},
 	{"bsooutbound",C_PATH,2,NULL,NULL},
 	{"callonflavors",C_STR,0,NULL,"NDCI"},
 	{"cancall",C_STR,0,NULL,"CM"},

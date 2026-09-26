@@ -1,5 +1,11 @@
 Version 0.60.2-dev
 ~~~~~~~~~~~~~~~~~~
+- new keyword: `binlog` <path>. Default: off.
+  Append a T-Hist v1 binary session log (HIST signature, version 1,
+  256-byte records) when a session finishes the handshake. Independent
+  of `history`; both may be set, and the path must be a different file.
+  Inbound peer address comes from the TCP connection. The dial target
+  in `host` is unchanged, so config `host` checks behave as before.
 
 
 Version 0.60.1

@@ -294,6 +294,12 @@ nodial		/etc/nodial
 # history file
 history		$(logz)/history
 
+# Binary session log, T-Hist format version 1 (five-byte HIST
+# signature, then fixed 256-byte records). Independent of
+# `history': either file, both, or neither. This path must not
+# be the text history file. Omit the keyword to disable.
+;binlog		$(logz)/qico.bin
+
 # personal fileboxes
 ;filebox 	1:2345/999	$(spool)/fbox/uplink
 ;filebox 	1:2345/888	$(spool)/fbox/downlink

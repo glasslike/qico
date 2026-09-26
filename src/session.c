@@ -56,6 +56,7 @@
  */
 
 #include "headers.h"
+#include "binlog.h"
 #include <fnmatch.h>
 #include "ls_zmodem.h"
 #include "hydra.h"
@@ -1022,6 +1023,32 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
                 (long) (recvf.toff - recvf.stot) );
             fclose( h );
         }
+    }
+
+    /*
+     * T-Hist log is independent of the text history above. Same gate:
+     * a session that never finished the handshake has no start time
+     * and is not recorded. Peer address prefers the inbound copy from
+     * answer_mode(); rnode->host is only the outbound dial target.
+     */
+    if ( rnode->starttime && cfgs( CFG_BINLOG )) {
+        const ftnaddr_t *ba = NULL;
+        const char *peer = binlog_peer();
+
+        if ( rnode->addrs )
+            ba = &rnode->addrs->addr;
+        else if ( calladdr )
+            ba = calladdr;
+        if ( !peer || !*peer )
+            peer = rnode->host;
+        binlog_write( ccs, ba, rnode->starttime, sest,
+            (long) ( sendf.toff - sendf.stot ),
+            (long) ( recvf.toff - recvf.stot ),
+            sendf.nf, recvf.nf,
+            ( rnode->options & O_INB ) ? 1 : 0,
+            ok_fail,
+            ( rnode->options & O_PWD ) ? 1 : 0,
+            peer, rnode->name, rnode->place, rnode->sysop );
     }
 
     while( freq_pktcount ) {

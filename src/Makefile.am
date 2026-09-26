@@ -4,7 +4,7 @@ sbin_PROGRAMS = qico
 bin_PROGRAMS = qctl @QCC@
 EXTRA_PROGRAMS = qcc
 
-noinst_HEADERS = binkp.h charset.h clserv.h crc.h defs.h \
+noinst_HEADERS = binlog.h binkp.h charset.h clserv.h crc.h defs.h \
 	ftn.h globals.h have.h headers.h hydra.h \
 	janus.h ls_zmodem.h \
 	mailer.h md5q.h modem.h nodelist.h \
@@ -14,7 +14,7 @@ noinst_HEADERS = binkp.h charset.h clserv.h crc.h defs.h \
 EXTRA_DIST = x2c.awk
 
 BUILT_SOURCES = qconf.c qconf.h flagexp.c flaglex.c
-qico_SOURCES = call.c clserv.c config.c crc.c daemon.c \
+qico_SOURCES = binlog.c call.c clserv.c config.c crc.c daemon.c \
 	emsi.c freq.c ftn.c globals.c hydra.c janus.c log.c \
 	ls_zglue.c ls_zmodem.c ls_zreceive.c ls_zsend.c main.c md5q.c \
 	modem.c nodelist.c outbound.c protfm.c qconf.c qipc.c \

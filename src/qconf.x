@@ -21,6 +21,7 @@ autosuspend,C_STRL,0,NULL
 autoticskip,C_YESNO,0,"no"
 binkplisted,C_YESNO,0,"no"
 binkpopt,C_STR,0,"MB"
+binlog,C_PATH,0,NULL
 bsooutbound,C_PATH,2,NULL
 callonflavors,C_STR,0,"NDCI"
 cancall,C_STR,0,"CM"
