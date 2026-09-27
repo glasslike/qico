@@ -63,6 +63,39 @@
 
 
 
+/*
+ * An IPv4 client accepted on a dual-stack IPv6 socket is reported by
+ * the kernel as an IPv4-mapped IPv6 address (::ffff:a.b.c.d, RFC 4291).
+ * getnameinfo(NI_NUMERICHOST) prints that prefix. The listening socket
+ * stays as systemd opened it; only the numeric text used in logs is
+ * rewritten to the embedded IPv4 address. A real IPv6 peer is unchanged.
+ *
+ * Returns 1 when buf holds a numeric address.
+ */
+static int numeric_peer(const struct sockaddr *addr, socklen_t salen,
+		char *buf, size_t buflen)
+{
+	static const unsigned char v4mapped[12] = {
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff
+	};
+
+#ifdef AF_INET6
+	if ( addr && addr->sa_family == AF_INET6
+		&& salen >= (socklen_t) sizeof( struct sockaddr_in6 )) {
+		const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *) addr;
+		struct in_addr v4;
+
+		if ( memcmp( sin6->sin6_addr.s6_addr, v4mapped, 12 ) == 0 ) {
+			memcpy( &v4, sin6->sin6_addr.s6_addr + 12, 4 );
+			if ( inet_ntop( AF_INET, &v4, buf, buflen ))
+				return 1;
+		}
+	}
+#endif
+	return getnameinfo( addr, salen, buf, buflen, NULL, 0, NI_NUMERICHOST ) == 0;
+}
+
+
 /* Returns hostname or ip address */
 char *get_hostname(struct sockaddr *addr, socklen_t salen, char *host, int len)
 {
@@ -70,7 +103,8 @@ char *get_hostname(struct sockaddr *addr, socklen_t salen, char *host, int len)
 	char hostbuf[MAXHOSTNAMELEN + 1];
 	int niErr = 1;
 
-	getnameinfo( addr, salen, ipaddr, sizeof(ipaddr), NULL, 0, NI_NUMERICHOST );
+	if ( !numeric_peer( addr, salen, ipaddr, sizeof( ipaddr )))
+		ipaddr[0] = '\0';
 	if ( cfgi( CFG_RESOLVEHOSTNAME ))
 		niErr = getnameinfo( addr, salen, hostbuf, sizeof(hostbuf), NULL, 0, NI_NAMEREQD );
 

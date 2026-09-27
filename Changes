@@ -6,6 +6,9 @@ Version 0.60.2-dev
   of `history`; both may be set, and the path must be a different file.
   Inbound peer address comes from the TCP connection. The dial target
   in `host` is unchanged, so config `host` checks behave as before.
+- inbound log: an IPv4 client on the dual-stack socket is written as
+  a.b.c.d, not ::ffff:a.b.c.d. The socket is unchanged. The same text
+  is stored in `binlog`.
 
 
 Version 0.60.1
