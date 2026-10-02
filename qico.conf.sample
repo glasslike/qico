@@ -138,6 +138,7 @@
 $spool		/var/spool/ftn
 $logz		/var/log/ftn
 $conf		/etc/ftn
+$binz		/usr/bin
 
 
 ###############################################################################
@@ -149,7 +150,7 @@ $conf		/etc/ftn
 ;address 	111:222/44@leftnet
 
 # default FTN domain for 5D addresses (not the internet DNS suffix)
-domain		fidonet.org
+domain		fidonet
 
 # Internet DNS suffix for fN.nN.zZ.<root> when there is no INA/IBN host
 # (same as binkd `root-domain'). Optional: if omitted, qico uses binkp.net
@@ -298,7 +299,7 @@ history		$(logz)/history
 # signature, then fixed 256-byte records). Independent of
 # `history': either file, both, or neither. This path must not
 # be the text history file. Omit the keyword to disable.
-;binlog		$(logz)/qico.bin
+;binlog		$(logz)/qico-binlog
 
 # personal fileboxes
 ;filebox 	1:2345/999	$(spool)/fbox/uplink
@@ -782,13 +783,22 @@ include		$(conf)/qico.substs
 ###############################################################################
 ### external processes ########################################################
 ###############################################################################
+
+# NB! aftermail/aftersession forks the toss script and does not wait for it.
+# On a short-lived systemd answer unit (qico-binkp@.service, qico-ifc@.service)
+# the session process exits right after the fork, and the default KillMode
+# then kills the whole control group, including toss. The log line
+# "starting …/toss" is written before the fork, so it does not prove toss ran.
+# Set KillMode=process on those units so only the session process is stopped.
+# Take examples of units from /systemd folder of this repo.
+
 # format: <progname> <address> <I|O> <0|1>
 # executed after session (see samples in ./stuff)
-;aftersession	/usr/local/bin/tossing
+;aftersession	$(binz)/tossing
 
 # format: <progname> <address> <I|O> <0|1>
 # executed after session with received files
-;aftermail	/usr/local/bin/up
+aftermail  $(binz)/toss
 
 # format: <progname> <address>
 # executed after chat open by remote side (see samples in ./stuff)
