@@ -34,6 +34,7 @@
 #define BL_OUT		0x0002	/* outgoing session */
 #define BL_OK		0x0004	/* finished without an error */
 #define BL_PWD		0x0008	/* password-protected session */
+#define BL_LST		0x0010	/* address is in the configured nodelist */
 
 /* Offsets inside the 256-byte record. */
 #define BL_OFF_ZONE	0
@@ -251,8 +252,8 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 		time_t started, time_t duration,
 		long bytes_sent, long bytes_rcvd,
 		int files_sent, int files_rcvd,
-		int inbound, int successful, int password,
-		const char *peer, const char *sysname,
+		int inbound, int successful, int password, int listed,
+		const char *result, const char *peer, const char *sysname,
 		const char *location, const char *sysop)
 {
 	unsigned char *text = rec + BL_OFF_STR;
@@ -272,24 +273,28 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 	put_u32( rec + BL_OFF_NSENT, u32_files( files_sent ));
 	put_u32( rec + BL_OFF_DUR, u32_duration( duration ));
 
-	/* Exactly one direction bit. Listed is not stored. */
+	/* Exactly one direction bit. Listed is T-Hist status bit 4. */
 	status = inbound ? BL_IN : BL_OUT;
 	if ( successful )
 		status |= BL_OK;
 	if ( password )
 		status |= BL_PWD;
+	if ( listed )
+		status |= BL_LST;
 	put_u16( rec + BL_OFF_STATUS, status );
 
 	/*
-	 * String 0 is the peer address (or empty). String 1, the domain
-	 * name, is left absent: qico does not have that name on its own.
-	 * Then system name, location, sysop.
+	 * String 0 is the session result and is always stored. T-Hist
+	 * prints the strings in order, separated by "; ". An empty peer
+	 * is left absent so the caption does not gain an empty field
+	 * between the result and the system name. Then system name,
+	 * location and sysop.
 	 */
-	if ( append_str( text, &used, peer ) == BL_ABSENT ) {
+	if ( append_str( text, &used, result ) == BL_ABSENT ) {
 		text[0] = '\0';
 		used = 1;
 	}
-	rec[BL_OFF_INDEX + 0] = (unsigned char) BL_ABSENT;
+	rec[BL_OFF_INDEX + 0] = (unsigned char) append_str( text, &used, peer );
 	rec[BL_OFF_INDEX + 1] = (unsigned char) append_str( text, &used, sysname );
 	rec[BL_OFF_INDEX + 2] = (unsigned char) append_str( text, &used, location );
 	rec[BL_OFF_INDEX + 3] = (unsigned char) append_str( text, &used, sysop );
@@ -300,8 +305,8 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 		time_t started, time_t duration,
 		long bytes_sent, long bytes_rcvd,
 		int files_sent, int files_rcvd,
-		int inbound, int successful, int password,
-		const char *peer, const char *sysname,
+		int inbound, int successful, int password, int listed,
+		const char *result, const char *peer, const char *sysname,
 		const char *location, const char *sysop)
 {
 	unsigned char rec[BL_REC_LEN];
@@ -318,8 +323,8 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 
 	fill_record( rec, addr, started, duration,
 		bytes_sent, bytes_rcvd, files_sent, files_rcvd,
-		inbound, successful, password,
-		peer, sysname, location, sysop );
+		inbound, successful, password, listed,
+		result, peer, sysname, location, sysop );
 
 	fd = open( pathcopy, O_RDWR | O_CREAT, 0666 );
 	if ( fd < 0 ) {

@@ -9,6 +9,14 @@ Version 0.60.2-dev
 - inbound log: an IPv4 client on the dual-stack socket is written as
   a.b.c.d, not ::ffff:a.b.c.d. The socket is unchanged. The same text
   is stored in `binlog`.
+- binlog: status bit 4 is set when the address is listed. This is the
+  same `O_LST` flag the text history writes as `L`. On BinkP the flag
+  is set only when `binkplisted` is on.
+- binlog: the first text field is the session result, then the peer
+  address, system name, location and sysop. The result is `OK` only
+  when the session succeeded. A hangup keeps the text-log phrase
+  (`carrier lost`, `hangup`, `session limit`, `low cps`). Any other
+  failure is `failed`. T-Hist joins the fields with `; `.
 
 
 Version 0.60.1

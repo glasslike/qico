@@ -903,6 +903,30 @@ static RETSIGTYPE sessalarm(int sig)
     tty_gothup = HUP_SESLIMIT;
 }
 
+/*
+ * First text field of the binary log. T-Hist joins the fields with
+ * "; ", and this phrase is the start of that caption. "OK" is used
+ * only when the session result itself is success. M_STAT is not
+ * copied here: with no hangup it says "ok" even if the session
+ * failed. A known hangup keeps the same words as the text log.
+ * Every other failure is "failed".
+ */
+static const char *binlog_result(int successful)
+{
+    if ( successful )
+        return "OK";
+    if ( tty_gothup == HUP_LINE )
+        return "carrier lost";
+    if ( tty_gothup == HUP_OPERATOR )
+        return "hangup";
+    if ( tty_gothup == HUP_SESLIMIT )
+        return "session limit";
+    if ( tty_gothup == HUP_CPS )
+        return "low cps";
+    return "failed";
+}
+
+
 int session(int originator, int type, ftnaddr_t *calladdr, int speed)
 {
     int rc, ok_fail;
@@ -1028,8 +1052,9 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
     /*
      * T-Hist log is independent of the text history above. Same gate:
      * a session that never finished the handshake has no start time
-     * and is not recorded. Peer address prefers the inbound copy from
-     * answer_mode(); rnode->host is only the outbound dial target.
+     * and is not recorded. Those attempts are left for later.
+     * Peer address prefers the inbound copy from answer_mode();
+     * rnode->host is only the outbound dial target.
      */
     if ( rnode->starttime && cfgs( CFG_BINLOG )) {
         const ftnaddr_t *ba = NULL;
@@ -1048,6 +1073,8 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
             ( rnode->options & O_INB ) ? 1 : 0,
             ok_fail,
             ( rnode->options & O_PWD ) ? 1 : 0,
+            ( rnode->options & O_LST ) ? 1 : 0,
+            binlog_result( ok_fail ),
             peer, rnode->name, rnode->place, rnode->sysop );
     }
 
