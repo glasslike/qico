@@ -1,20 +1,6 @@
 Qico TODO 
 ---------
 
-Current
--------
-
-- T-Hist binary log format version 3, agreed with the format author,
-  not implemented yet. The session fields stay the trimmed v2 record
-  (256-byte image, trailing zeros removed, byte 255 left zero).
-  Signature is HIST and 0x03. Each on-disk frame is: one length byte
-  (1..255), that many payload bytes, CRC-32/ISO-HDLC of the length
-  byte plus the payload (the zlib crc32, little-endian), then the
-  same length byte again. A writer checks that last frame and appends;
-  it reads the whole file only when the check fails, and then drops
-  only an unfinished tail. A frame with a bad CRC must not shift the
-  sessions that follow it. qico will write this version instead of v1.
-
 - https://sourceforge.net/p/qico/bugs/15/
   The source code repository was migrated from CVS to GIT but the old CVS '$Id'
   lines are still present in source files. Those lines are associated  with a

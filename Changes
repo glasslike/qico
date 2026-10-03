@@ -17,6 +17,11 @@ Version 0.60.2-dev
   when the session succeeded. A hangup keeps the text-log phrase
   (`carrier lost`, `hangup`, `session limit`, `low cps`). Any other
   failure is `failed`. T-Hist joins the fields with `; `.
+- binlog: an attempt that dies before the handshake is recorded too,
+  with a short reason (`no EMSI`, `bad password`, `busy`, `timeout`,
+  and the other abort phrases). Text history is still written only
+  after the handshake, and `starttime` is unchanged. An unknown FTN
+  address stays zero in the record; the format has no blank address.
 
 
 Version 0.60.1

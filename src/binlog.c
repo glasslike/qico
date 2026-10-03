@@ -59,6 +59,10 @@ typedef char bl_record_fits[( BL_OFF_STR + BL_TEXT_LEN == BL_REC_LEN ) ? 1 : -1]
 /* Inbound peer from answer_mode(), or NULL on an outbound session. */
 static char *peer_addr;
 
+/* Attempt start and failure phrase. Not rnode fields. */
+static time_t began_at;
+static char *result_note;
+
 
 void binlog_set_peer(const char *peer)
 {
@@ -71,6 +75,35 @@ void binlog_set_peer(const char *peer)
 const char *binlog_peer(void)
 {
 	return peer_addr;
+}
+
+
+void binlog_reset(void)
+{
+	xfree( result_note );
+	result_note = NULL;
+	began_at = time( NULL );
+}
+
+
+void binlog_set_result(const char *reason)
+{
+	xfree( result_note );
+	result_note = NULL;
+	if ( reason && *reason )
+		result_note = xstrdup( reason );
+}
+
+
+const char *binlog_noted_result(void)
+{
+	return result_note;
+}
+
+
+time_t binlog_began(void)
+{
+	return began_at;
 }
 
 
@@ -262,6 +295,10 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 
 	memset( rec, 0, BL_REC_LEN );
 
+	/*
+	 * No address leaves the four fields zero. The layout has no
+	 * "absent" flag, so a reader displays that as 0:0/0.0.
+	 */
 	put_u16( rec + BL_OFF_ZONE, addr ? ftn16( addr->z ) : 0 );
 	put_u16( rec + BL_OFF_NET, addr ? ftn16( addr->n ) : 0 );
 	put_u16( rec + BL_OFF_NODE, addr ? ftn16( addr->f ) : 0 );

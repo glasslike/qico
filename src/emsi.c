@@ -60,6 +60,7 @@
  */
 
 #include "headers.h"
+#include "binlog.h"
 #include "qipc.h"
 #include "crc.h"
 #include "tty.h"
@@ -247,6 +248,7 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
     
 	if ( !( str = strstr( str, emsidat ))) {
 		write_log( "No **EMSI_DAT signature found!" );
+		binlog_set_result( "bad EMSI" );
 		return 0;
 	}
 
@@ -257,6 +259,7 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
 	if ( len_hex != body_len ) {
 		write_log( "Bad EMSI_DAT length: %u, should be: %lu!",
 			len_hex, (unsigned long) body_len );
+		binlog_set_result( "bad EMSI" );
 		return 0; /* Bad EMSI length */
 	}
 	
@@ -267,6 +270,7 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
 	if ( crc_hex != crc_got ) {
 		write_log( "Bad EMSI_DAT CRC: %04X, should be: %04X!",
 			crc_hex, (unsigned) crc_got );
+		binlog_set_result( "bad EMSI" );
 		return 0; /* Bad EMSI CRC */
 	}
 
@@ -274,6 +278,7 @@ static int emsi_parsedat(char *str, ninfo_t *dat)
 
 	if ( strncmp( str + 14, "{EMSI}", 6)) {
 		write_log( "No EMSI fingerprint!" );
+		binlog_set_result( "bad EMSI" );
 		return 0; /* No EMSI ident */
 	}
 
