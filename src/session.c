@@ -922,9 +922,11 @@ static RETSIGTYPE sessalarm(int sig)
 }
 
 /*
- * First text field of the binary log. T-Hist joins the fields with
- * "; ", and this phrase is the start of that caption. "OK" is used
- * only when the session result itself is success. M_STAT is not
+ * Failure phrase for the binary log. A successful session returns
+ * NULL. The writer then leaves string 0 empty (a zero byte) and
+ * stores the peer address at string 1, starting at the next byte.
+ * T-Hist shows success by the missing 'A' mark, not by the word "OK".
+ * M_STAT is not
  * copied here: with no hangup it says "ok" even if the session
  * failed. A known hangup keeps the same words as the text log.
  * Every other failure uses the phrase noted at the abort, or "failed".
@@ -934,7 +936,7 @@ static const char *binlog_result(int successful)
     const char *noted;
 
     if ( successful )
-        return "OK";
+        return NULL;
     if ( tty_gothup == HUP_LINE )
         return "carrier lost";
     if ( tty_gothup == HUP_OPERATOR )

@@ -12,11 +12,13 @@ Version 0.60.2-dev
 - binlog: status bit 4 is set when the address is listed. This is the
   same `O_LST` flag the text history writes as `L`. On BinkP the flag
   is set only when `binkplisted` is on.
-- binlog: the first text field is the session result, then the peer
-  address, system name, location and sysop. The result is `OK` only
-  when the session succeeded. A hangup keeps the text-log phrase
-  (`carrier lost`, `hangup`, `session limit`, `low cps`). Any other
-  failure is `failed`. T-Hist joins the fields with `; `.
+- binlog: on failure the first text field is the reason, then the
+  peer address, system name, location and sysop. A hangup keeps the
+  text-log phrase (`carrier lost`, `hangup`, `session limit`,
+  `low cps`). Any other failure is a short reason or `failed`. A
+  successful session leaves that first field empty (a zero byte) and
+  stores the peer address in the next field, starting at the following
+  byte. T-Hist joins the fields with `; `.
 - binlog: an attempt that dies before the handshake is recorded too,
   with a short reason (`no EMSI`, `bad password`, `busy`, `timeout`,
   and the other abort phrases). Text history is still written only

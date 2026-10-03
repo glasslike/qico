@@ -47,13 +47,16 @@ time_t		binlog_began(void);
  * `listed' is the same O_LST flag the text history writes as "L"
  * (on BinkP it is set only when binkplisted is on).
  *
- * result is the first text field. T-Hist joins the fields with "; ",
- * so the phrase is stored without a separator of its own. The caller
- * passes "OK" for a session whose result is S_OK, a hangup phrase
- * ("carrier lost", "hangup", "session limit", "low cps") when one is
- * known, the short abort phrase noted with binlog_set_result(), or
- * "failed". peer is the IP address and is omitted when empty, rather
- * than stored as an empty field. Then system name, location and sysop.
+ * result is the failure phrase, or NULL when the session succeeded.
+ * NULL leaves string 0 empty: a zero byte at the start of the text,
+ * and the peer address in string 1 beginning at the next byte. T-Hist
+ * shows that as success because the 'A' mark is absent. A failure
+ * phrase is stored in string 0, with no separator of its own: a
+ * hangup phrase ("carrier lost", "hangup", "session limit",
+ * "low cps"), the short abort phrase noted with binlog_set_result(),
+ * or "failed". peer is the IP address and is omitted when empty,
+ * rather than stored as an empty field. Then system name, location
+ * and sysop.
  * A failure to write is logged and does not fail the session.
  */
 void		binlog_write(const char *path, const ftnaddr_t *addr,

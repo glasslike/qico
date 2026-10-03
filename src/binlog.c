@@ -321,11 +321,13 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 	put_u16( rec + BL_OFF_STATUS, status );
 
 	/*
-	 * String 0 is the session result and is always stored. T-Hist
-	 * prints the strings in order, separated by "; ". An empty peer
-	 * is left absent so the caption does not gain an empty field
-	 * between the result and the system name. Then system name,
-	 * location and sysop.
+	 * String 0 is the failure phrase. A successful session leaves it
+	 * empty: Strings[0] is a zero byte, and T-Hist treats that missing
+	 * text as success (no 'A' mark). String 1 is the peer address and
+	 * then starts at Strings[1]. A failure stores its phrase at
+	 * Strings[0], so the address follows that phrase. An empty peer
+	 * stays absent rather than becoming an empty field. Then system
+	 * name, location and sysop.
 	 */
 	if ( append_str( text, &used, result ) == BL_ABSENT ) {
 		text[0] = '\0';
