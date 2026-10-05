@@ -316,10 +316,23 @@ int receivecb(char *fn)
     if ( !strcasecmp( p, "pkt" ) && cfgi( CFG_SHOWPKT ))
         return( showpkt( fn ));
     if ( !strcasecmp( p, "req" )) {
-        if ( emsi_lo & O_NOFREQS )
+        /*
+         * A WaZOO file request arrives as an ordinary file. rxclose()
+         * has already stored it and, on FOP_OK, sends M_GOT after we
+         * return, so the Binkp/EMSI session stays successful. A non-zero
+         * return drops the temp file instead of renaming it into inbound.
+         *
+         * O_NOFREQS is the EMSI side (NRQ, HRQ, HAT). Binkp never fills
+         * emsi_lo, so the same refusal also follows is_freq_available():
+         * no extrp and no srifrp, or freqtime unset / outside its window.
+         * freq_recv() in that case runs system() on a null processor and
+         * still has nothing to offer back.
+         */
+        if (( emsi_lo & O_NOFREQS ) || is_freq_available() != FR_AVAILABLE ) {
+            write_log( "freq refused, removed %s", recvf.fname ? recvf.fname : fn );
             return 1;
-        else
-            return( freq_recv( fn ));
+        }
+        return freq_recv( fn );
     }
     return 0;
 }

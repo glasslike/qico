@@ -29,6 +29,9 @@ Version 0.60.2-dev
   and the other abort phrases). Text history is still written only
   after the handshake, and `starttime` is unchanged. An unknown FTN
   address stays zero in the record; the format has no blank address.
+- freq: a received *.req is deleted after accept when neither extrp nor
+  srifrp is set, or when freqtime is unset or closed. The session stays
+  successful and the processor is not run.
 
 
 Version 0.60.1
