@@ -745,10 +745,17 @@ static int M_adr(BPS *bp, byte *arg)
 		rem_pwd = "-";
 
 	restrcpy( &rnode->pwd, rem_pwd );
-	if ( !strcmp( rnode->pwd, "-" ))
-		rnode->options &= ~O_PWD;
-	else
+	/*
+	 * Outbound: O_PWD means we sent a real password. M_OK "non-secure"
+	 * clears it. Inbound leaves the bit off. M_PWD sets it only after
+	 * the secret matches, so a rejected guess is not a protected
+	 * session. The reject itself uses rnode->pwd (binkd expected_pwd),
+	 * not this bit.
+	 */
+	if ( bp->to && strcmp( rnode->pwd, "-" ) != 0 )
 		rnode->options |= O_PWD;
+	else
+		rnode->options &= ~O_PWD;
 
 	bp->got_adr = 1;
 	return 1;
@@ -968,7 +975,12 @@ static int M_pwd(BPS *bp, byte *arg)
 	char	*buf = skip_blanks((char *) arg );
 	char	*exp_pwd = NULL, *got_pwd = NULL, tmp[129];
 	int	have_CRAM = !strncasecmp( buf, "CRAM-MD5-", 9 );
-	int	have_pwd = ((rnode->options & O_PWD) != 0 );
+	/*
+	 * A configured secret, not the session label. "-" and a missing
+	 * password are "not required", same as binkd expected_pwd. O_PWD
+	 * is set below only when this secret matches.
+	 */
+	int	need_pwd = bp_pwd_set( rnode->pwd );
 	int	bad_pwd;
 
 	DEBUG(('B',3,"PWD"));
@@ -990,7 +1002,7 @@ static int M_pwd(BPS *bp, byte *arg)
 		return 0;
 	}
 
-	DEBUG(('B',4,"have_CRAM: %d, have_pwd: %d, MD_chal: %.8p", have_CRAM, have_pwd,
+	DEBUG(('B',4,"have_CRAM: %d, need_pwd: %d, MD_chal: %.8p", have_CRAM, need_pwd,
 		bp->MD_chal));
 
 	if ( bp->MD_chal ) {
@@ -1030,7 +1042,7 @@ static int M_pwd(BPS *bp, byte *arg)
 	else
 		bad_pwd = strcmp( exp_pwd, got_pwd );
 
-	if ( have_pwd ) {
+	if ( need_pwd ) {
 		if ( bad_pwd ) {
 			log_rinfo( rnode );
 			write_log( "Bad password" );
@@ -1041,6 +1053,8 @@ static int M_pwd(BPS *bp, byte *arg)
 			bp->rc = S_FAILURE;
 			return 0;
 		}
+		/* Matched. From here O_PWD is the protected-session label. */
+		rnode->options |= O_PWD;
 	} else if ( bad_pwd ) {
 		write_log( "Remote proposed a password" );
 	}
@@ -1048,7 +1062,7 @@ static int M_pwd(BPS *bp, byte *arg)
 	if (( bp->opt_md & ( O_THEY | O_WANT )) == ( O_THEY | O_WANT ))
 		bp->opt_md = O_YES;
 
-	if ( !have_pwd || bp->opt_md != O_YES )
+	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
 
 	snprintf( tmp, 128, "%s%s%s%s%s%s",
@@ -1062,7 +1076,7 @@ static int M_pwd(BPS *bp, byte *arg)
 		msgs( BPM_NUL, "OPT%s", tmp );
 
 	msgs( BPM_NUL, "TRF %lu %lu", totalm, totalf );
-	msgs( BPM_OK, "%ssecure", have_pwd ? "" : "non-" );
+	msgs( BPM_OK, "%ssecure", ( rnode->options & O_PWD ) ? "" : "non-" );
 
 	xfree( exp_pwd );
 	return binkp_hsdone( bp );

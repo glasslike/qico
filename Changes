@@ -19,6 +19,11 @@ Version 0.60.2-dev
   successful session leaves that first field empty (a zero byte) and
   stores the peer address in the next field, starting at the following
   byte. T-Hist joins the fields with `; `.
+- binkp: inbound O_PWD is set only after the password matches.
+  A wrong password still ends the session. The reject uses the
+  configured secret, so the attempt is not marked protected in the
+  binary log. Outbound is unchanged: the bit means we sent a real
+  password, and M_OK "non-secure" still clears it.
 - binlog: an attempt that dies before the handshake is recorded too,
   with a short reason (`no EMSI`, `bad password`, `busy`, `timeout`,
   and the other abort phrases). Text history is still written only
