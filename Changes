@@ -1,9 +1,11 @@
 Version 0.60.2-dev
 ~~~~~~~~~~~~~~~~~~
 - new keyword: `binlog` <path>. Default: off.
-  Append a T-Hist v1 binary session log (HIST signature, version 1,
-  256-byte records) when a session finishes the handshake. Independent
-  of `history`; both may be set, and the path must be a different file.
+  Append a T-Hist v3 binary session log (HIST signature, version 3).
+  Each record is a length byte, the trimmed session image, a CRC-32
+  and the same length again. A version 1 file is left untouched.
+  Independent of `history`; both may be set, and the path must be a
+  different file.
   Inbound peer address comes from the TCP connection. The dial target
   in `host` is unchanged, so config `host` checks behave as before.
 - inbound log: an IPv4 client on the dual-stack socket is written as
@@ -29,6 +31,10 @@ Version 0.60.2-dev
   and the other abort phrases). Text history is still written only
   after the handshake, and `starttime` is unchanged. An unknown FTN
   address stays zero in the record; the format has no blank address.
+- binlog: a session waits at most 30 seconds for the file lock. If the
+  lock is still held, that session skips its binary record and finishes.
+  The holder is left alone. Later sessions write again once the lock
+  is free.
 - freq: a received *.req is deleted after accept when neither extrp nor
   srifrp is set, or when freqtime is unset or closed. The session stays
   successful and the processor is not run.

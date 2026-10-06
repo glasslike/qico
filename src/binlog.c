@@ -1,34 +1,49 @@
 /**********************************************************
- * T-Hist v1 binary session log.
+ * T-Hist v3 binary session log.
  *
- * The file is a five-byte signature (HIST and version 1) followed
- * by fixed 256-byte little-endian records. T-Hist 1.4 reads this
- * layout. Bytes are stored one field at a time so the record does
- * not depend on compiler padding or host endianness.
+ * The file is a five-byte signature (HIST and version 3) followed
+ * by variable-length frames. Each frame is a length byte, that many
+ * bytes of the session image, a CRC-32/ISO-HDLC of the length byte
+ * and those image bytes, and the same length byte again. The image
+ * is the version 1 layout with trailing zeros removed. Byte 255 of
+ * the image stays zero, so a stored frame is at most 255 bytes of
+ * image plus the six-byte wrapper.
+ *
+ * Bytes are stored one field at a time so the image does not depend
+ * on compiler padding or host endianness. The CRC is the same
+ * polynomial already used for Hydra and Zmodem, finished with the
+ * usual bitwise complement (the zlib crc32).
  *
  * The daemon finishes each session in its own process (a forked
  * caller, or a separate inbound qico). Writers take an exclusive
  * fcntl lock only around the append, not for the whole session.
- * Under that lock an empty file gets its signature, a torn tail
- * (size other than 5 + 256*N) is cut back to the last whole
- * record, and the new record is one write loop. A short write is
- * truncated away before the lock is released, so the next session
- * still sees a record boundary. A kill in the middle of write()
- * can still leave a short tail; the next writer drops it.
- *
- * There is no fsync. A power loss can drop the last append, the
- * same as the text history file.
+ * The wait for that lock is capped. Past the cap this session
+ * skips its record and finishes; the holder keeps the lock.
+ * Under that lock an empty file gets its signature. A normal append
+ * checks only the last frame. The whole file is read only when that
+ * check fails; an unfinished tail is then cut back to the last frame
+ * whose length bytes and CRC agree. A bad frame in the middle is not
+ * deleted, so sessions after it stay in the file. A short write is
+ * truncated away before the lock is released. There is no fsync. A
+ * power loss can drop the last append, the same as the text history.
  **********************************************************/
 
 #include "headers.h"
 #include "binlog.h"
+#include "crc.h"
 
-/* Signature is the four letters HIST and format version 1. */
+/* Signature is the four letters HIST and format version 3. */
 #define BL_SIG_LEN	5
 #define BL_REC_LEN	256
-#define BL_TEXT_LEN	206
-/* Index byte meaning "this string is not stored". Spec: >= 206. */
+/*
+ * Usable text is 205 bytes. Record byte 255 stays zero, which version
+ * 3 requires of the session image. An index >= 206 still means the
+ * string is absent.
+ */
+#define BL_TEXT_LEN	205
 #define BL_ABSENT	255
+/* Length byte, CRC-32, and the repeated length byte. */
+#define BL_FRAME_WRAP	6
 
 #define BL_IN		0x0001	/* incoming session */
 #define BL_OUT		0x0002	/* outgoing session */
@@ -51,10 +66,10 @@
 #define BL_OFF_INDEX	46
 #define BL_OFF_STR	50
 
-static const unsigned char bl_sig[BL_SIG_LEN] = { 'H', 'I', 'S', 'T', 0x01 };
+static const unsigned char bl_sig[BL_SIG_LEN] = { 'H', 'I', 'S', 'T', 0x03 };
 
-/* 8-byte address + 3*8 traffic/time + 3*4 counts + 2 status + 4 index + 206 text. */
-typedef char bl_record_fits[( BL_OFF_STR + BL_TEXT_LEN == BL_REC_LEN ) ? 1 : -1];
+/* 50-byte header + 205 bytes of text + the reserved zero at index 255. */
+typedef char bl_record_fits[( BL_OFF_STR + BL_TEXT_LEN + 1 == BL_REC_LEN ) ? 1 : -1];
 
 /* Inbound peer from answer_mode(), or NULL on an outbound session. */
 static char *peer_addr;
@@ -248,10 +263,27 @@ static int read_full(int fd, void *buf, size_t len)
 }
 
 
-/* Whole-file advisory lock. Released by the kernel if this process dies. */
+/*
+ * How long a session will wait for another writer. A live append is
+ * a few milliseconds. The cap covers a slow repair of a damaged tail.
+ * After that this session gives up its own record. It does not break
+ * the other process's lock: that process may be inside a write, and
+ * killing it would also skip the node status update that follows.
+ */
+#define BL_LOCK_WAIT_MS		30000
+#define BL_LOCK_PAUSE_MS	100
+
+/*
+ * Whole-file advisory lock. 0 means we hold it. -1 is a real error.
+ * 1 means the wait expired and the caller must not write.
+ * F_SETLK returns at once when the lock is busy (EAGAIN or EACCES),
+ * so a stuck holder cannot park this session inside the kernel.
+ * The kernel still drops the lock if the holder dies.
+ */
 static int lock_file(int fd)
 {
 	struct flock fl;
+	int waited = 0;
 
 	memset( &fl, 0, sizeof( fl ));
 	fl.l_type = F_WRLCK;
@@ -259,10 +291,16 @@ static int lock_file(int fd)
 	fl.l_start = 0;
 	fl.l_len = 0;
 	for ( ;; ) {
-		if ( fcntl( fd, F_SETLKW, &fl ) == 0 )
+		if ( fcntl( fd, F_SETLK, &fl ) == 0 )
 			return 0;
-		if ( errno != EINTR )
+		if ( errno == EINTR )
+			continue;
+		if ( errno != EAGAIN && errno != EACCES )
 			return -1;
+		if ( waited >= BL_LOCK_WAIT_MS )
+			return 1;
+		qsleep( BL_LOCK_PAUSE_MS );
+		waited += BL_LOCK_PAUSE_MS;
 	}
 }
 
@@ -340,6 +378,147 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 }
 
 
+/*
+ * Version 3 stores the image only through its last non-zero byte, and
+ * never stores byte 255. The walk starts at 254 for that reason. A
+ * completely zero image still yields length 1.
+ */
+static unsigned trim_len(const unsigned char *rec)
+{
+	unsigned len = 254;
+
+	while ( len > 0 && rec[len] == 0 )
+		len--;
+	return len + 1;
+}
+
+
+/* CRC-32/ISO-HDLC of the length byte and the image bytes that follow it. */
+static unsigned frame_crc(const unsigned char *len_and_image, unsigned n)
+{
+	return (unsigned) CRC32_FINISH( crc32block( (void *) len_and_image, n ));
+}
+
+
+/*
+ * 1: a whole frame with matching length bytes and CRC.
+ * 0: these bytes are not a frame.
+ * -1: the buffer ends before the claimed frame does.
+ */
+static int frame_valid(const unsigned char *b, size_t n, unsigned *adv)
+{
+	unsigned L, got;
+
+	if ( n < 1 )
+		return -1;
+	L = b[0];
+	if ( L < 1 || L > 255 )
+		return 0;
+	if ( n < (size_t) L + BL_FRAME_WRAP )
+		return -1;
+	if ( b[L + 5] != (unsigned char) L )
+		return 0;
+	got = (unsigned) b[1 + L]
+		| ((unsigned) b[2 + L] << 8)
+		| ((unsigned) b[3 + L] << 16)
+		| ((unsigned) b[4 + L] << 24);
+	if ( got != frame_crc( b, 1 + L ))
+		return 0;
+	*adv = L + BL_FRAME_WRAP;
+	return 1;
+}
+
+
+/* The usual append. One short read at the end of the file, no scan. */
+static int last_frame_good(int fd, off_t end)
+{
+	unsigned char b[1 + 255 + 4 + 1];
+	unsigned char L;
+	unsigned adv;
+	off_t start;
+
+	if ( end < (off_t) BL_SIG_LEN + 1 + BL_FRAME_WRAP )
+		return 0;
+	if ( lseek( fd, end - 1, SEEK_SET ) < 0 || read_full( fd, &L, 1 ) < 0 )
+		return 0;
+	if ( L < 1 )
+		return 0;
+	start = end - (off_t) ( L + BL_FRAME_WRAP );
+	if ( start < (off_t) BL_SIG_LEN )
+		return 0;
+	if ( lseek( fd, start, SEEK_SET ) < 0
+		|| read_full( fd, b, (size_t) L + BL_FRAME_WRAP ) < 0 )
+		return 0;
+	return frame_valid( b, (size_t) L + BL_FRAME_WRAP, &adv ) == 1;
+}
+
+
+/*
+ * Walk from the signature to the last frame whose length and CRC
+ * agree. A damaged frame is skipped a byte at a time so a later good
+ * frame is kept. An unfinished tail stops the walk. Returns that end
+ * offset, or -1 if the file could not be read.
+ */
+static off_t scan_good_end(int fd, off_t end)
+{
+	unsigned char b[1 + 255 + 4 + 1];
+	off_t pos = BL_SIG_LEN;
+	off_t good = BL_SIG_LEN;
+
+	while ( pos < end ) {
+		off_t remain = end - pos;
+		size_t n = remain > (off_t) sizeof( b ) ? sizeof( b ) : (size_t) remain;
+		unsigned adv = 0;
+		int v;
+
+		if ( lseek( fd, pos, SEEK_SET ) < 0 || read_full( fd, b, n ) < 0 )
+			return -1;
+		v = frame_valid( b, n, &adv );
+		if ( v == 1 ) {
+			pos += (off_t) adv;
+			good = pos;
+			continue;
+		}
+		/*
+		 * The length byte claims more bytes than the file has.
+		 * That is an unfinished tail only when no later offset
+		 * still holds a whole frame. A large garbage length in
+		 * front of a good frame must not eat that frame.
+		 */
+		if ( v < 0 ) {
+			off_t later = pos + 1;
+			int found = 0;
+
+			while ( later < end && (end - later) >= (off_t) ( 1 + BL_FRAME_WRAP )) {
+				size_t ln;
+				unsigned ladv = 0;
+				int lv;
+
+				ln = (size_t) ( end - later );
+				if ( ln > sizeof( b ))
+					ln = sizeof( b );
+				if ( lseek( fd, later, SEEK_SET ) < 0
+					|| read_full( fd, b, ln ) < 0 )
+					return -1;
+				lv = frame_valid( b, ln, &ladv );
+				if ( lv == 1 ) {
+					found = 1;
+					break;
+				}
+				later++;
+			}
+			if ( !found )
+				break;
+			/* Skip the false length and resume at the later frame. */
+			pos = later;
+			continue;
+		}
+		pos++;
+	}
+	return good;
+}
+
+
 void binlog_write(const char *path, const ftnaddr_t *addr,
 		time_t started, time_t duration,
 		long bytes_sent, long bytes_rcvd,
@@ -349,9 +528,11 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 		const char *location, const char *sysop)
 {
 	unsigned char rec[BL_REC_LEN];
+	unsigned char frame[1 + 255 + 4 + 1];
 	unsigned char sig[BL_SIG_LEN];
 	char pathcopy[MAX_PATH + 1];
-	off_t end, keep;
+	unsigned plen, crc;
+	off_t end, good;
 	int fd;
 
 	if ( !path || !*path )
@@ -370,10 +551,19 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 		write_log( "binlog: can't open '%s': %s", pathcopy, strerror( errno ));
 		return;
 	}
-	if ( lock_file( fd ) < 0 ) {
-		write_log( "binlog: can't lock '%s': %s", pathcopy, strerror( errno ));
-		close( fd );
-		return;
+	{
+		int locked = lock_file( fd );
+
+		if ( locked > 0 ) {
+			write_log( "binlog: lock timed out on '%s'", pathcopy );
+			close( fd );
+			return;
+		}
+		if ( locked < 0 ) {
+			write_log( "binlog: can't lock '%s': %s", pathcopy, strerror( errno ));
+			close( fd );
+			return;
+		}
 	}
 
 	end = lseek( fd, 0, SEEK_END );
@@ -400,32 +590,49 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 		if ( lseek( fd, 0, SEEK_SET ) < 0
 			|| read_full( fd, sig, BL_SIG_LEN ) < 0
 			|| memcmp( sig, bl_sig, BL_SIG_LEN ) != 0 ) {
-			write_log( "binlog: '%s' is not a T-Hist v1 log, not writing",
+			write_log( "binlog: '%s' is not a T-Hist v3 log, not writing",
 				pathcopy );
 			unlock_file( fd );
 			close( fd );
 			return;
 		}
 		/*
-		 * A previous writer died inside write() and left a short
-		 * tail. Drop it so this record stays on a 256-byte boundary.
+		 * A matching last frame means the tail is whole. Anything
+		 * else can be a short write. Find the last good frame and
+		 * drop only what follows it.
 		 */
-		if ( ( end - BL_SIG_LEN ) % BL_REC_LEN != 0 ) {
-			keep = BL_SIG_LEN + (( end - BL_SIG_LEN ) / BL_REC_LEN ) * BL_REC_LEN;
-			if ( ftruncate( fd, keep ) < 0 ) {
+		if ( end > (off_t) BL_SIG_LEN && !last_frame_good( fd, end )) {
+			good = scan_good_end( fd, end );
+			if ( good < 0 ) {
 				write_log( "binlog: can't repair tail of '%s': %s",
 					pathcopy, strerror( errno ));
 				unlock_file( fd );
 				close( fd );
 				return;
 			}
-			write_log( "binlog: dropped incomplete tail of '%s'", pathcopy );
-			end = keep;
+			if ( good < end ) {
+				if ( ftruncate( fd, good ) < 0 ) {
+					write_log( "binlog: can't repair tail of '%s': %s",
+						pathcopy, strerror( errno ));
+					unlock_file( fd );
+					close( fd );
+					return;
+				}
+				write_log( "binlog: dropped incomplete tail of '%s'", pathcopy );
+				end = good;
+			}
 		}
 	}
 
+	plen = trim_len( rec );
+	frame[0] = (unsigned char) plen;
+	memcpy( frame + 1, rec, plen );
+	crc = frame_crc( frame, 1 + plen );
+	put_u32( frame + 1 + plen, crc );
+	frame[1 + plen + 4] = (unsigned char) plen;
+
 	if ( lseek( fd, end, SEEK_SET ) < 0
-		|| write_full( fd, rec, BL_REC_LEN ) < 0 ) {
+		|| write_full( fd, frame, (size_t) plen + BL_FRAME_WRAP ) < 0 ) {
 		int saved = errno;
 
 		/*

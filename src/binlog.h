@@ -1,5 +1,5 @@
 /**********************************************************
- * T-Hist v1 binary session log.
+ * T-Hist v3 binary session log.
  *
  * Include after headers.h. The text history file is a separate
  * option and is not touched here.
@@ -35,7 +35,8 @@ const char	*binlog_noted_result(void);
 time_t		binlog_began(void);
 
 /*
- * Append one T-Hist v1 record. path comes from the `binlog' keyword.
+ * Append one T-Hist v3 record. path comes from the `binlog' keyword.
+ * A file signed as another version is left untouched.
  * A NULL or empty path returns without creating a file.
  *
  * addr NULL means the FTN address is not known yet. The four address
