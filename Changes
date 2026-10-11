@@ -1,43 +1,22 @@
 Version 0.60.2-dev
 ~~~~~~~~~~~~~~~~~~
-- new keyword: `binlog` <path>. Default: off.
-  Append a T-Hist v3 binary session log (HIST signature, version 3).
-  Each record is a length byte, the trimmed session image, a CRC-32
-  and the same length again. A version 1 file is left untouched.
+- new keyword: `binlog`.
+  Append a T-Hist v3 binary session log.
   Independent of `history`; both may be set, and the path must be a
-  different file.
-  Inbound peer address comes from the TCP connection. The dial target
-  in `host` is unchanged, so config `host` checks behave as before.
-- inbound log: an IPv4 client on the dual-stack socket is written as
-  a.b.c.d, not ::ffff:a.b.c.d. The socket is unchanged. The same text
-  is stored in `binlog`.
-- binlog: status bit 4 is set when the address is listed. This is the
-  same `O_LST` flag the text history writes as `L`. On BinkP the flag
-  is set only when `binkplisted` is on.
-- binlog: on failure the first text field is the reason, then the
-  peer address, system name, location and sysop. A hangup keeps the
-  text-log phrase (`carrier lost`, `hangup`, `session limit`,
-  `low cps`). Any other failure is a short reason or `failed`. A
-  successful session leaves that first field empty (a zero byte) and
-  stores the peer address in the next field, starting at the following
-  byte. T-Hist joins the fields with `; `.
-- binkp: inbound O_PWD is set only after the password matches.
+  different file. See qico.conf.sample for details.
+  Developed in collaboration with Mikhail Markovskiy and supported 
+  by T-Hist (github.com/klug378/T-Hist).
+- fix [security] binkp: inbound O_PWD is set only after the password matches.
   A wrong password still ends the session. The reject uses the
   configured secret, so the attempt is not marked protected in the
   binary log. Outbound is unchanged: the bit means we sent a real
   password, and M_OK "non-secure" still clears it.
-- binlog: an attempt that dies before the handshake is recorded too,
-  with a short reason (`no EMSI`, `bad password`, `busy`, `timeout`,
-  and the other abort phrases). Text history is still written only
-  after the handshake, and `starttime` is unchanged. An unknown FTN
-  address stays zero in the record; the format has no blank address.
-- binlog: a session waits at most 30 seconds for the file lock. If the
-  lock is still held, that session skips its binary record and finishes.
-  The holder is left alone. Later sessions write again once the lock
-  is free.
-- freq: a received *.req is deleted after accept when neither extrp nor
-  srifrp is set, or when freqtime is unset or closed. The session stays
-  successful and the processor is not run.
+- fix inbound log: an IPv4 client on the dual-stack socket is written as
+  a.b.c.d, not ::ffff:a.b.c.d. The socket is unchanged. The same text
+  is stored in `binlog`.
+- fix freq: a received *.req is deleted after receipt when neither
+  extrp nor srifrp is set, or when freqtime is unset or closed. 
+  The session stays successful and the processor is not run.
 
 
 Version 0.60.1
