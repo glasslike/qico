@@ -29,6 +29,7 @@ Baseline (what Quick build uses): `--enable-binkp`.
 Optional: `--enable-perl` (needs `libperl-dev` / `perl-devel` / `perl-dev`)
 and `--enable-hydra8k`. `qcc` is built when ncurses is found.
 
+Check `configure --help` for possible options.
 Extended `configure` can also pin install paths and turn Perl on:
 
 ```bash
