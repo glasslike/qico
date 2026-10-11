@@ -1,5 +1,5 @@
-Version 0.60.2-dev
-~~~~~~~~~~~~~~~~~~
+Version 0.60.2
+~~~~~~~~~~~~~~
 - new keyword: `binlog`.
   Append a T-Hist v3 binary session log.
   Independent of `history`; both may be set, and the path must be a
