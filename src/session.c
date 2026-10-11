@@ -56,6 +56,7 @@
  */
 
 #include "headers.h"
+#include "binlog.h"
 #include <fnmatch.h>
 #include "ls_zmodem.h"
 #include "hydra.h"
@@ -315,10 +316,23 @@ int receivecb(char *fn)
     if ( !strcasecmp( p, "pkt" ) && cfgi( CFG_SHOWPKT ))
         return( showpkt( fn ));
     if ( !strcasecmp( p, "req" )) {
-        if ( emsi_lo & O_NOFREQS )
+        /*
+         * A WaZOO file request arrives as an ordinary file. rxclose()
+         * has already stored it and, on FOP_OK, sends M_GOT after we
+         * return, so the Binkp/EMSI session stays successful. A non-zero
+         * return drops the temp file instead of renaming it into inbound.
+         *
+         * O_NOFREQS is the EMSI side (NRQ, HRQ, HAT). Binkp never fills
+         * emsi_lo, so the same refusal also follows is_freq_available():
+         * no extrp and no srifrp, or freqtime unset / outside its window.
+         * freq_recv() in that case runs system() on a null processor and
+         * still has nothing to offer back.
+         */
+        if (( emsi_lo & O_NOFREQS ) || is_freq_available() != FR_AVAILABLE ) {
+            write_log( "freq refused, removed %s", recvf.fname ? recvf.fname : fn );
             return 1;
-        else
-            return( freq_recv( fn ));
+        }
+        return freq_recv( fn );
     }
     return 0;
 }
@@ -542,9 +556,13 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         rc = emsi_send();
 
         if ( rc < 0 )
+            binlog_set_result( "no EMSI" );
+        if ( rc < 0 )
             return S_REDIAL | S_ADDTRY;
 
         rc = emsi_recv( SM_OUTBOUND, rnode );
+        if ( rc < 0 )
+            binlog_set_result( "no EMSI" );
         if ( rc < 0)
             return S_REDIAL | S_ADDTRY;
 
@@ -554,6 +572,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
 
         if ( !has_addr( calladdr, rnode->addrs )) {
             write_log( "remote is not %s", ftnaddrtoa( calladdr ));
+            binlog_set_result( "not the called node" );
             return S_FAILURE;
         }
 
@@ -576,6 +595,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         rc = emsi_recv( SM_INBOUND, rnode );
         if ( rc < 0) {
             write_log( "unable to establish EMSI session" );
+            binlog_set_result( "no EMSI" );
             return S_REDIAL | S_ADDTRY;
         }
 
@@ -591,6 +611,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         for( pp = cfgal( CFG_ADDRESS ); pp; pp = pp->next )
             if ( has_addr( &pp->addr, rnode->addrs )) {
                 write_log( "remote also has %s", ftnaddrtoa( &pp->addr ));
+                binlog_set_result( "remote has our aka" );
                 return S_FAILURE;
             }
 
@@ -640,6 +661,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
             } else {
                 write_log( "password not matched for %s", ftnaddrtoa( &pp->addr ));
                 write_log( "  (got '%s' instead of '%s')", rnode->pwd, t );
+                binlog_set_result( "bad password" );
                 rc = 1;
             }
 	}
@@ -737,6 +759,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         rc = emsi_send();
 
         if ( rc < 0 ) {
+            binlog_set_result( "no EMSI" );
             flkill( &fl, 0 );
             return S_REDIAL | S_ADDTRY;
         }
@@ -765,6 +788,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
     switch ( proto ) {
         case P_NCP:
             write_log( "no compatible protocols" );
+            binlog_set_result( "no compatible protocols" );
             flkill( &fl, 0 );
             return S_FAILURE;
 
@@ -829,7 +853,11 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
     chatinit( rnode->opt & MO_CHAT ? proto : -1 );
 
     IFPerl( rc = perl_on_session( s );
-        if( rc != S_OK ) { flkill( &fl, 0 ); return rc; } );
+        if( rc != S_OK ) {
+            binlog_set_result( "aborted" );
+            flkill( &fl, 0 );
+            return rc;
+        } );
 
     qemsisend( rnode );
     qpreset( 0 );
@@ -850,8 +878,10 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
                     rc = wazoosend( xproto );
             } else {
                 rc = wazoorecv( xproto | 0x0100 );
-                if ( rc )
+                if ( rc ) {
+                    binlog_set_result( "transfer failed" );
                     return S_REDIAL;
+                }
                 rc = wazoosend( xproto );
                 if ( was_req )
                     rc = wazoorecv( xproto );
@@ -892,6 +922,8 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
     }
 
     flkill( &fl, !rc );
+    if ( rc )
+        binlog_set_result( "transfer failed" );
     return rc ? S_REDIAL : S_OK;
 }
 
@@ -901,6 +933,88 @@ static RETSIGTYPE sessalarm(int sig)
     write_log("session limit of %d minutes is over", cfgi( CFG_MAXSESSION ));
     tty_gothup = HUP_SESLIMIT;
 }
+
+/*
+ * Failure phrase for the binary log. A successful session returns
+ * NULL. The writer then leaves string 0 empty (a zero byte) and
+ * stores the peer address at string 1, starting at the next byte.
+ * T-Hist shows success by the missing 'A' mark, not by the word "OK".
+ * M_STAT is not
+ * copied here: with no hangup it says "ok" even if the session
+ * failed. A known hangup keeps the same words as the text log.
+ * Every other failure uses the phrase noted at the abort, or "failed".
+ */
+static const char *binlog_result(int successful)
+{
+    const char *noted;
+
+    if ( successful )
+        return NULL;
+    if ( tty_gothup == HUP_LINE )
+        return "carrier lost";
+    if ( tty_gothup == HUP_OPERATOR )
+        return "hangup";
+    if ( tty_gothup == HUP_SESLIMIT )
+        return "session limit";
+    if ( tty_gothup == HUP_CPS )
+        return "low cps";
+    noted = binlog_noted_result();
+    if ( noted && *noted )
+        return noted;
+    return "failed";
+}
+
+
+/*
+ * Write the binary log for this attempt, including one that died
+ * before the handshake. Does not change rc, rnode->starttime, the
+ * text history or the queue. A known FTN address is the remote's
+ * first AKA, or the outbound call address. Otherwise the address
+ * fields stay zero.
+ */
+static void binlog_flush(int rc, ftnaddr_t *calladdr)
+{
+    time_t now, started, duration;
+    const ftnaddr_t *ba = NULL;
+    const char *peer;
+    int successful;
+
+    if ( !cfgs( CFG_BINLOG ))
+        return;
+
+    successful = (( rc & S_MASK ) == S_OK );
+    now = time( NULL );
+    if ( rnode->starttime ) {
+        started = rnode->starttime;
+        duration = now - rnode->starttime;
+    } else {
+        started = binlog_began();
+        duration = started ? now - started : 0;
+    }
+    if ( duration < 0 )
+        duration = 0;
+
+    if ( rnode->addrs )
+        ba = &rnode->addrs->addr;
+    else if ( calladdr )
+        ba = calladdr;
+
+    peer = binlog_peer();
+    if ( !peer || !*peer )
+        peer = rnode->host;
+
+    binlog_write( ccs, ba, started, duration,
+        (long) ( sendf.toff - sendf.stot ),
+        (long) ( recvf.toff - recvf.stot ),
+        sendf.nf, recvf.nf,
+        ( rnode->options & O_INB ) ? 1 : 0,
+        successful,
+        ( rnode->options & O_PWD ) ? 1 : 0,
+        ( rnode->options & O_LST ) ? 1 : 0,
+        binlog_result( successful ),
+        peer, rnode->name, rnode->place, rnode->sysop );
+}
+
 
 int session(int originator, int type, ftnaddr_t *calladdr, int speed)
 {
@@ -915,6 +1029,7 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
     /* BinkP file time is UTC. Other protocols still use local time. */
     prot_ftime_utc( type == SESSION_BINKP );
     rnode->starttime = 0;
+    binlog_reset();
     rnode->realspeed = effbaud = speed;
 
     if ( !originator )
@@ -928,13 +1043,15 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
     if ( calladdr )
         addr_cpy( &ndefaddr, calladdr);
 
-    if ( cfgi( CFG_MINSPEED ) && speed < cci ) {
-        write_log( "connection speed is too slow (min %d required)", cci );
-        return S_REDIAL | S_ADDTRY;
-    }
-
     memset( &sendf, 0, sizeof( sendf ));
     memset( &recvf, 0, sizeof( recvf ));
+
+    if ( cfgi( CFG_MINSPEED ) && speed < cci ) {
+        write_log( "connection speed is too slow (min %d required)", cci );
+        binlog_set_result( "speed too low" );
+        binlog_flush( S_REDIAL | S_ADDTRY, calladdr );
+        return S_REDIAL | S_ADDTRY;
+    }
 
     signal( SIGALRM, sessalarm );
     signal( SIGHUP, tty_sighup );
@@ -949,6 +1066,8 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
             rc = emsi_init( originator );
             if ( rc < 0 ) {
                 write_log( "unable to establish EMSI session" );
+                binlog_set_result( "no EMSI" );
+                binlog_flush( S_REDIAL | S_ADDTRY, calladdr );
                 signal( SIGALRM, SIG_DFL );
                 return S_REDIAL | S_ADDTRY;
             }
@@ -965,6 +1084,8 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
 
         default:
             write_log( "unsupported session type! (%d)", type );
+            binlog_set_result( "unsupported session" );
+            binlog_flush( S_REDIAL | S_ADDTRY, calladdr );
             signal( SIGALRM, SIG_DFL );
             return S_REDIAL | S_ADDTRY;
     }
@@ -1023,6 +1144,13 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
             fclose( h );
         }
     }
+
+    /*
+     * Binary log is separate from the text history above. It also
+     * records an attempt that never finished the handshake. The
+     * handshake time in rnode->starttime is left unchanged.
+     */
+    binlog_flush( rc, calladdr );
 
     while( freq_pktcount ) {
         snprintf( s, MAX_STRING, "/tmp/qpkt.%04lx%02x", (long)getpid(), freq_pktcount-- );

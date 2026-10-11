@@ -67,6 +67,7 @@
 #endif
 
 #include "binkp.h"
+#include "binlog.h"
 #include "tty.h"
 #include "tcp.h"
 #include "crc.h"
@@ -127,6 +128,7 @@ static int bp_login_ok(BPS *bp, const char *cmd)
 	if ( bp->init )
 		return 1;
 	write_log( "Binkp: unexpected %s after handshake", cmd );
+	binlog_set_result( "unexpected command" );
 	msgs( BPM_ERR, "Protocol error" );
 	bp->rc = S_FAILURE;
 	return 0;
@@ -143,6 +145,7 @@ static int bp_xfer_ok(BPS *bp, const char *cmd)
 	if ( !bp->init )
 		return 1;
 	write_log( "Binkp: unexpected %s during handshake", cmd );
+	binlog_set_result( "unexpected command" );
 	msgs( BPM_ERR, "Protocol error" );
 	bp->rc = S_FAILURE;
 	return 0;
@@ -564,6 +567,7 @@ static int M_adr(BPS *bp, byte *arg)
 		return 0;
 	if ( bp->got_adr ) {
 		write_log( "Binkp: unexpected second M_ADR" );
+		binlog_set_result( "unexpected command" );
 		msgs( BPM_ERR, "Protocol error" );
 		bp->rc = S_FAILURE;
 		return 0;
@@ -589,6 +593,7 @@ static int M_adr(BPS *bp, byte *arg)
 				falist_add( &rnode->addrs, &fa );
 				log_rinfo( rnode );
 				write_log( "Remote has our aka %s", ftnaddrtoa( &fa ));
+				binlog_set_result( "remote has our aka" );
 				msgs( BPM_ERR, "Sorry, you have one of my akas");
 				bp->rc = S_FAILURE;
 				xfree( adr_owned );
@@ -613,6 +618,7 @@ static int M_adr(BPS *bp, byte *arg)
 						else if ( strcmp( rem_pwd, aka_pwd ) != 0 ) {
 							log_rinfo( rnode );
 							write_log( "inconsistent pwd settings for this node" );
+							binlog_set_result( "bad password" );
 							msgs( BPM_ERR, "Bad password" );
 							bp->rc = S_FAILURE;
 							xfree( adr_owned );
@@ -669,6 +675,7 @@ static int M_adr(BPS *bp, byte *arg)
 					if ( !bp->to && rpwd && *rpwd && strcmp( rpwd, "-" ) != 0 ) {
 						log_rinfo( rnode );
 						write_log( "Secure aka %s is busy", ftnaddrtoa( &fa ));
+						binlog_set_result( "busy" );
 						msgs( BPM_BSY, "Secure aka %s is busy", ftnaddrtoa( &fa ));
 						bp->rc = S_BUSY;
 						xfree( adr_owned );
@@ -680,6 +687,7 @@ static int M_adr(BPS *bp, byte *arg)
 		} else {
 			log_rinfo( rnode );
 			write_log( "Remote sent bad address %s", rem_aka );
+			binlog_set_result( "bad address" );
 			msgs( BPM_ERR, "Bad address %s", rem_aka );
 			bp->rc = S_FAILURE;
 			xfree( adr_owned );
@@ -692,6 +700,7 @@ static int M_adr(BPS *bp, byte *arg)
 	if ( rc == 0 ) {
 		log_rinfo( rnode );
 		msgs( BPM_BSY, "All akas are busy" );
+		binlog_set_result( "busy" );
 		bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
 		return 0;
 	}
@@ -700,6 +709,7 @@ static int M_adr(BPS *bp, byte *arg)
 		if ( !has_addr( bp->remaddr, rnode->addrs )) {
 			log_rinfo( rnode );
 			write_log( "Called the wrong system" );
+			binlog_set_result( "wrong system" );
 			msgs( BPM_ERR, "Sorry, you are not who I need" );
 			bp->rc = S_FAILURE|S_ADDTRY;
 			return 0;
@@ -719,6 +729,7 @@ static int M_adr(BPS *bp, byte *arg)
 
 			if ( dig == NULL ) {
 				msgs( BPM_ERR, "Can't build digest" );
+				binlog_set_result( "bad password" );
 				bp->rc = S_REDIAL | S_ADDTRY;
 				return 0;
 			} else
@@ -734,10 +745,17 @@ static int M_adr(BPS *bp, byte *arg)
 		rem_pwd = "-";
 
 	restrcpy( &rnode->pwd, rem_pwd );
-	if ( !strcmp( rnode->pwd, "-" ))
-		rnode->options &= ~O_PWD;
-	else
+	/*
+	 * Outbound: O_PWD means we sent a real password. M_OK "non-secure"
+	 * clears it. Inbound leaves the bit off. M_PWD sets it only after
+	 * the secret matches, so a rejected guess is not a protected
+	 * session. The reject itself uses rnode->pwd (binkd expected_pwd),
+	 * not this bit.
+	 */
+	if ( bp->to && strcmp( rnode->pwd, "-" ) != 0 )
 		rnode->options |= O_PWD;
+	else
+		rnode->options &= ~O_PWD;
 
 	bp->got_adr = 1;
 	return 1;
@@ -957,7 +975,12 @@ static int M_pwd(BPS *bp, byte *arg)
 	char	*buf = skip_blanks((char *) arg );
 	char	*exp_pwd = NULL, *got_pwd = NULL, tmp[129];
 	int	have_CRAM = !strncasecmp( buf, "CRAM-MD5-", 9 );
-	int	have_pwd = ((rnode->options & O_PWD) != 0 );
+	/*
+	 * A configured secret, not the session label. "-" and a missing
+	 * password are "not required", same as binkd expected_pwd. O_PWD
+	 * is set below only when this secret matches.
+	 */
+	int	need_pwd = bp_pwd_set( rnode->pwd );
 	int	bad_pwd;
 
 	DEBUG(('B',3,"PWD"));
@@ -966,6 +989,7 @@ static int M_pwd(BPS *bp, byte *arg)
 		return 0;
 	if ( !bp->got_adr ) {
 		write_log( "Binkp: M_PWD before M_ADR" );
+		binlog_set_result( "unexpected command" );
 		msgs( BPM_ERR, "Protocol error" );
 		bp->rc = S_FAILURE;
 		return 0;
@@ -973,11 +997,12 @@ static int M_pwd(BPS *bp, byte *arg)
 
 	if ( bp->to ) {
 		DEBUG(('B',1,"unexpected password from remote on outgoing call"));
+		binlog_set_result( "unexpected password" );
 		bp->rc = S_FAILURE;
 		return 0;
 	}
 
-	DEBUG(('B',4,"have_CRAM: %d, have_pwd: %d, MD_chal: %.8p", have_CRAM, have_pwd,
+	DEBUG(('B',4,"have_CRAM: %d, need_pwd: %d, MD_chal: %.8p", have_CRAM, need_pwd,
 		bp->MD_chal));
 
 	if ( bp->MD_chal ) {
@@ -986,6 +1011,7 @@ static int M_pwd(BPS *bp, byte *arg)
 			exp_pwd = md5_digest( rnode->pwd, bp->MD_chal );
 			if ( exp_pwd == NULL ) {
 				msgs( BPM_ERR, "Can't build digest" );
+				binlog_set_result( "bad password" );
 				bp->rc = S_FAILURE;
 				return 0;
 			}
@@ -993,6 +1019,7 @@ static int M_pwd(BPS *bp, byte *arg)
 		} else if ( bp->opt_md & O_NEED ) {
 			log_rinfo( rnode );
 			write_log( "Remote does not support MD5" );
+			binlog_set_result( "no MD5" );
 			msgs( BPM_ERR, "You must support MD5" );
 			bp->rc = S_FAILURE;
 			return 0;
@@ -1015,16 +1042,19 @@ static int M_pwd(BPS *bp, byte *arg)
 	else
 		bad_pwd = strcmp( exp_pwd, got_pwd );
 
-	if ( have_pwd ) {
+	if ( need_pwd ) {
 		if ( bad_pwd ) {
 			log_rinfo( rnode );
 			write_log( "Bad password" );
+			binlog_set_result( "bad password" );
 			msgs( BPM_ERR, "Security violation" );
 			xfree( exp_pwd );
 			rnode->options |= O_BAD;
 			bp->rc = S_FAILURE;
 			return 0;
 		}
+		/* Matched. From here O_PWD is the protected-session label. */
+		rnode->options |= O_PWD;
 	} else if ( bad_pwd ) {
 		write_log( "Remote proposed a password" );
 	}
@@ -1032,7 +1062,7 @@ static int M_pwd(BPS *bp, byte *arg)
 	if (( bp->opt_md & ( O_THEY | O_WANT )) == ( O_THEY | O_WANT ))
 		bp->opt_md = O_YES;
 
-	if ( !have_pwd || bp->opt_md != O_YES )
+	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
 
 	snprintf( tmp, 128, "%s%s%s%s%s%s",
@@ -1046,7 +1076,7 @@ static int M_pwd(BPS *bp, byte *arg)
 		msgs( BPM_NUL, "OPT%s", tmp );
 
 	msgs( BPM_NUL, "TRF %lu %lu", totalm, totalf );
-	msgs( BPM_OK, "%ssecure", have_pwd ? "" : "non-" );
+	msgs( BPM_OK, "%ssecure", ( rnode->options & O_PWD ) ? "" : "non-" );
 
 	xfree( exp_pwd );
 	return binkp_hsdone( bp );
@@ -1066,6 +1096,7 @@ static int M_ok(BPS *bp, byte *arg)
 		return 0;
 	if ( !bp->got_adr ) {
 		write_log( "Binkp: M_OK before M_ADR" );
+		binlog_set_result( "unexpected command" );
 		msgs( BPM_ERR, "Protocol error" );
 		bp->rc = S_FAILURE;
 		return 0;
@@ -1073,6 +1104,7 @@ static int M_ok(BPS *bp, byte *arg)
 
 	if ( !bp->to ) {
 		DEBUG(('B',1,"unexpected M_OK (%s) from remote on incoming call", buf));
+		binlog_set_result( "unexpected command" );
 		bp->rc = S_FAILURE;
 		return 0;
 	}
@@ -1140,6 +1172,7 @@ static int M_err(BPS *bp, byte *arg)
 
 	DEBUG(('B',3,"ERR %s", buf));
 	write_log("Binkp error: \"%s\"", buf );
+	binlog_set_result( "binkp error" );
     
 	ERR_CLOSE( bp );
 	bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
@@ -1157,6 +1190,7 @@ static int M_bsy(BPS *bp, byte *arg)
     
 	DEBUG(('B',3,"BSY %s", buf));
 	write_log( "Binkp busy: \"%s\"", buf );
+	binlog_set_result( "busy" );
 
 	ERR_CLOSE( bp );
 	bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
@@ -1497,6 +1531,7 @@ static int binkp_recv(BPS *bp)
 			}
 		} else if ( readsz == 0 ) {
 			write_log( "rcvd: connection closed by remote host" );
+			binlog_set_result( "connection closed" );
 			bp->error = -2;
 			return 0;
 		}
@@ -1663,6 +1698,7 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 
 	if ( binkp_init( mode ) != OK ) {
 		binkp_deinit();
+		binlog_set_result( "binkp init failed" );
 		if ( mode )
 			return (S_REDIAL | S_ADDTRY);
 		else
@@ -1795,10 +1831,13 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 	}
 
 	rc = bps->rc;
-	if ( bps->error == -1 )
+	if ( bps->error == -1 ) {
 		write_log( "timeout" );
-	else if ( bps->error > 0 )
+		binlog_set_result( "timeout" );
+	} else if ( bps->error > 0 ) {
 		write_log( "%s", strerror( bps->saved_errno ));
+		binlog_set_result( "link error" );
+	}
 
 	flkill( &fl, rc == S_OK );
 

@@ -1,3 +1,24 @@
+Version 0.60.2
+~~~~~~~~~~~~~~
+- new keyword: `binlog`.
+  Append a T-Hist v3 binary session log.
+  Independent of `history`; both may be set, and the path must be a
+  different file. See qico.conf.sample for details.
+  Developed in collaboration with Mikhail Markovskiy and supported 
+  by T-Hist (github.com/klug378/T-Hist).
+- fix [security] binkp: inbound O_PWD is set only after the password matches.
+  A wrong password still ends the session. The reject uses the
+  configured secret, so the attempt is not marked protected in the
+  binary log. Outbound is unchanged: the bit means we sent a real
+  password, and M_OK "non-secure" still clears it.
+- fix inbound log: an IPv4 client on the dual-stack socket is written as
+  a.b.c.d, not ::ffff:a.b.c.d. The socket is unchanged. The same text
+  is stored in `binlog`.
+- fix freq: a received *.req is deleted after receipt when neither
+  extrp nor srifrp is set, or when freqtime is unset or closed. 
+  The session stays successful and the processor is not run.
+
+
 Version 0.60.1
 ~~~~~~~~~~~~~~
 - fix [security] binkp: handshake commands (M_ADR, M_PWD, M_OK) are
@@ -10,7 +31,10 @@ Version 0.60.1
   written to the log.
 - fix [security] binkp: a short fread/fwrite is an error. M_GOT is not
   sent for a file that was not stored.
-- fix binkp: identity NULs recode a copy, not the config.
+- fix binkp: the M_NUL identity lines (SYS, ZYZ, LOC, NDL, PHN) recode
+  a copy. Recoding wrote into the config itself, so a long-running
+  daemon sent double-encoded station and sysop names from the second
+  session on.
 - fix "if date": the day in the condition was compared with the day of the year.
 - fix binkp file time: a UTC timestamp was shifted by the local timezone.
   BinkP file time is UTC and is stored unchanged. EMSI, Zmodem, Hydra
