@@ -778,16 +778,16 @@ static int binkp_hsdone(BPS *bp)
 		bp->opt_cr = O_NO;
 
 	/*
-	 * EMSI always runs nodelist_listed() and may set O_LST. BinkP never
-	 * did, so `if listed', FREQ listed-status and the "/LST" bit in the
-	 * options log stayed off. binkplisted (default no) keeps that
-	 * historic behaviour; when yes, reuse the same check and
-	 * needalllisted policy as EMSI, after ADR/PWD so rnode->addrs is
-	 * complete. A missing index still means "not listed" (listed() does
-	 * not compile).
+	 * EMSI always runs addrs_listed() and may set O_LST. BinkP used
+	 * to skip that, so `if listed', FREQ listed-status and the "/LST"
+	 * bit in the options log stayed off. binkplisted now defaults to
+	 * yes: the same listedfrom and needalllisted rules as EMSI, after
+	 * ADR/PWD so rnode->addrs is complete. binkplisted no restores
+	 * the old "never listed on BinkP" behaviour. A missing index
+	 * still means "not in the nodelist" (the check does not compile
+	 * one). listedfrom in_configs does not open the index.
 	 */
-	if ( cfgi( CFG_BINKPLISTED )
-		&& nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
 		rnode->options |= O_LST;
 
 	if (( bp->opt_cr & O_WE ) && ( bp->opt_cr & O_THEY )) {

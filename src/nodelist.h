@@ -95,6 +95,19 @@ extern char *ndl_errors[];
 int	nodelist_compile(int);
 int	nodelist_query(const ftnaddr_t *, ninfo_t **);
 int	nodelist_listed(falist_t *, int);
+/*
+ * True when s is a legal `listedfrom' value: in_nodelist, in_configs
+ * or in_either. Comparison is case-insensitive. Empty and unknown
+ * strings are rejected so a typo fails config load instead of silently
+ * changing who counts as listed.
+ */
+int	listedfrom_ok(const char *);
+/*
+ * Session listed predicate. Applies `listedfrom' and `needalllisted'
+ * to the addresses the remote actually presented. in_nodelist is
+ * nodelist_listed(). The other modes are documented on addrs_listed().
+ */
+int	addrs_listed(falist_t *);
 void	nodelist_done(void);
 
 void	phonetrans(char **, slist_t *);

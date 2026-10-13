@@ -19,7 +19,7 @@ autohold,C_STRL,0,NULL
 autoskip,C_STRL,0,NULL
 autosuspend,C_STRL,0,NULL
 autoticskip,C_YESNO,0,"no"
-binkplisted,C_YESNO,0,"no"
+binkplisted,C_YESNO,0,"yes"
 binkpopt,C_STR,0,"MB"
 binlog,C_PATH,0,NULL
 bsooutbound,C_PATH,2,NULL
@@ -68,6 +68,7 @@ jrxwin,C_INT,0,"0"
 jtxwin,C_INT,0,"0"
 kill-old-bsy,C_STR,2,NULL
 killbadpkt,C_YESNO,0,"no"
+listedfrom,C_STR,0,"in_nodelist"
 localcp,C_PATH,0,"none"
 lockdir,C_PATH,0,"/tmp"
 log,C_PATH,1,NULL

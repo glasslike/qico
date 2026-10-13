@@ -585,7 +585,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         if ( rnode->pwd && strlen( rnode->pwd ))
             rnode->options |= O_PWD;
 
-        if ( nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+        if ( addrs_listed( rnode->addrs ))
             rnode->options |= O_LST;
 
     } else {
@@ -671,7 +671,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
             flkill( &fl, 0 );
 	}
 
-        if ( nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+        if ( addrs_listed( rnode->addrs ))
             rnode->options |= O_LST;
 
         pr[2] = 0; pr[1] = 0; pr[0] = 0;

@@ -647,6 +647,16 @@ int readconfig(const char *cfgname)
                     configtab[i].keyword);
             rc=0;
         }
+    /* listedfrom is a token, not a free string. Check every copy,
+     * including values that sit inside if, so a typo fails at load
+     * even when that if is false right now. The default installed
+     * for an omitted keyword is in_nodelist. */
+    for(ci=configtab[CFG_LISTEDFROM].items;ci;ci=ci->next)
+        if(!listedfrom_ok(ci->value.v_char)) {
+            write_log("keyword 'listedfrom' must be in_nodelist, in_configs or in_either (got '%s')",
+                ci->value.v_char ? ci->value.v_char : "");
+            rc=0;
+        }
     /* asooutbound/bsooutbound are nonif but not each-required; one of
      * them must be set or outbound_init() has nothing to scan. */
     if(!cfgs(CFG_ASOOUTBOUND) && !cfgs(CFG_BSOOUTBOUND)) {

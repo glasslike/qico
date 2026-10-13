@@ -251,6 +251,31 @@ nodelist	nodelist.999
 # Check for `listed' all addresses of remote or only one (any).
 needalllisted	no
 
+# Where a presented address counts as listed (`if listed', FREQ
+# SystemStatus, /LST in the log). This is not the protected flag:
+# a password of "-" is still a declaration, and `if protected'
+# stays the password check.
+#
+#   in_nodelist  the compiled nodelist only. Default, same as before
+#                this keyword existed. No nodelist, or an index that
+#                cannot be opened: nobody is listed. The index is not
+#                compiled just for this check.
+#   in_configs   declared in this config: a `password' line or a
+#                `subst' line for that exact z:n/f.p. A boss line
+#                does not cover a point. filebox and share do not
+#                count. The nodelist is not opened, so this still
+#                works when no list is configured.
+#   in_either    listed when either source matches. A missing or
+#                unconfigured nodelist does not hide a config hit
+#                and does not start a compile.
+#
+# needalllisted applies on top of that test. EMSI always uses this.
+# BinkP uses it too, unless binkplisted is set to no. The value is
+# read once, before the listed flag is set: `if listed' cannot
+# choose listedfrom for that check. tcp,
+# inbound and protected already can.
+listedfrom	in_nodelist
+
 # ASO and/or BSO outbound path
 #
 # (required)(nonif)
@@ -583,11 +608,12 @@ protorder	HJDZ1C
 # T - Chat enable
 binkpopt	MRBCT
 
-# Apply nodelist `listed' check on BinkP sessions (default no).
-# EMSI always does this; BinkP historically did not. When yes, O_LST is
-# set using needalllisted, so `if listed', FREQ listed status and /LST
-# in the options log work the same as on EMSI.
-;binkplisted	yes
+# Apply the `listed' check on BinkP sessions (default yes).
+# EMSI always does this. BinkP used to skip it; `binkplisted no'
+# restores that. When yes, O_LST is set from `listedfrom' and
+# needalllisted, so `if listed', FREQ listed status and /LST in
+# the options log work the same as on EMSI.
+binkplisted	yes
 
 # HTTP(S) proxy.
 # format: proxy host[:port] [login [password]]

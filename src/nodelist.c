@@ -1468,6 +1468,205 @@ int nodelist_listed(falist_t *addrs, int needall)
 }
 
 
+/*
+ * `listedfrom' selects which fact makes a presented address listed.
+ * The three names are the config values. The numeric order is the
+ * same order listed_from_name[] uses, so the parser can return an
+ * index into that table.
+ *
+ *   in_nodelist — compiled nodelist index only. Historic qico, and
+ *                 the default. No nlpath, no nodelist line, or an
+ *                 index that will not open: nobody is listed. The
+ *                 index is not compiled from here.
+ *   in_configs  — the address is declared in the active config, as a
+ *                 `password' line or a `subst' line. Exact z:n/f.p.
+ *                 A secret of "-" is still a declaration: protected
+ *                 is O_PWD, not this flag. A subst whose phone is
+ *                 "-" still counts. filebox and share are not
+ *                 declarations. The nodelist is not opened, so a
+ *                 mailer with no list still answers this mode.
+ *   in_either   — listed when either source says so. A nodelist that
+ *                 is not configured or whose index will not open does
+ *                 not hide a config hit, and still does not compile.
+ *
+ * needalllisted is applied after that per-address test, unchanged:
+ * no means one hit is enough, yes means every presented address
+ * must hit. An empty address list returns needall once a source
+ * was actually consulted. If the nodelist is the only source and
+ * it is not configured or its index will not open, the result is
+ * not listed — the same early return nodelist_listed() already
+ * makes when ndl_open() fails.
+ *
+ * Binkd's listed is "this address is a node line or a passwords-file
+ * line", OR across the session, and it is not the Fido nodelist.
+ * in_configs is that rule in qico's terms (password or subst).
+ * in_nodelist keeps the old qico meaning. in_either is the union
+ * binkd does not have, because binkd never consults a nodelist for
+ * this flag.
+ */
+#define LISTED_FROM_NODELIST	0
+#define LISTED_FROM_CONFIGS	1
+#define LISTED_FROM_EITHER	2
+
+static const char *const listed_from_name[] = {
+	"in_nodelist",
+	"in_configs",
+	"in_either",
+	NULL
+};
+
+
+int listedfrom_ok(const char *s)
+{
+	int i;
+
+	if ( !s || !*s )
+		return 0;
+	for ( i = 0; listed_from_name[i]; i++ )
+		if ( !strcasecmp( s, listed_from_name[i] ))
+			return 1;
+	return 0;
+}
+
+
+/* Index into listed_from_name[], or LISTED_FROM_NODELIST if unset. */
+static int listed_from_mode(void)
+{
+	const char *s = cfgs( CFG_LISTEDFROM );
+	int i;
+
+	if ( !s )
+		return LISTED_FROM_NODELIST;
+	for ( i = 0; listed_from_name[i]; i++ )
+		if ( !strcasecmp( s, listed_from_name[i] ))
+			return i;
+	/*
+	 * readconfig() rejects unknown values. If one still arrives,
+	 * keep the historic nodelist rule rather than listing nobody
+	 * or everybody.
+	 */
+	return LISTED_FROM_NODELIST;
+}
+
+
+/* Exact 4D match against one address/string list (password or subst). */
+static int fasl_has_addr(faslist_t *l, const ftnaddr_t *a)
+{
+	for ( ; l; l = l->next )
+		if ( addr_cmp( &l->addr, a ))
+			return 1;
+	return 0;
+}
+
+
+/*
+ * The nodelist half of a listed check.
+ *
+ * "Off" means the operator did not configure it: no nlpath, or no
+ * nodelist line. Do not call ndl_open() then. It would return
+ * NDL_ENOPATH and, on a later query, nodelist_compile() would log
+ * "nlpath is not defined" — not something a handshake should start.
+ *
+ * "Configured but not usable" means nlpath is set and the index will
+ * not open (missing qnode.idx, lock, bad file). Same rule as
+ * nodelist_listed(): the address is not in the nodelist, and this
+ * check does not compile the index. Compiling here would turn a
+ * mailer that has no list into a compile attempt on every session.
+ *
+ * Returns 1 only when ndl_listed_one() may be called.
+ */
+static int nodelist_ready_for_listed(void)
+{
+	int rc;
+
+	if ( !cfgs( CFG_NLPATH ) || !cfgsl( CFG_NODELIST )) {
+		DEBUG(('N',1,"addrs_listed: nodelist is not configured"));
+		return 0;
+	}
+
+	if ( nodelist_index != NULL )
+		return 1;
+
+	rc = ndl_open();
+	if ( rc == 1 )
+		return 1;
+
+	/*
+	 * rc is NDL_ENOPATH (0) or a negative NDL_* code. ENOENT comes
+	 * back as -(NDL_ENEEDCOMPILE). Leave the index closed.
+	 */
+	DEBUG(('N',1,"addrs_listed: nodelist index not usable, rc %d", rc));
+	return 0;
+}
+
+
+int addrs_listed(falist_t *addrs)
+{
+	int		mode = listed_from_mode();
+	int		needall = cfgi( CFG_NEEDALLLISTED );
+	int		nl_ready = 0;
+	faslist_t	*passwords = NULL;
+	faslist_t	*substs = NULL;
+	falist_t	*i;
+
+	DEBUG(('N',1,"addrs_listed: %s, needall %d",
+		listed_from_name[mode], needall));
+
+	/*
+	 * in_nodelist is the historic check, including "index will
+	 * not open → nobody is listed" and its debug lines. An
+	 * unconfigured nodelist takes the same answer without opening
+	 * anything: there is no index to consult.
+	 */
+	if ( mode == LISTED_FROM_NODELIST ) {
+		if ( !cfgs( CFG_NLPATH ) || !cfgsl( CFG_NODELIST )) {
+			DEBUG(('N',1,"addrs_listed: nodelist is not configured"));
+			return 0;
+		}
+		return nodelist_listed( addrs, needall );
+	}
+
+	/*
+	 * in_either tries the index when a nodelist is configured.
+	 * If it is not configured, or ndl_open() fails, the nodelist
+	 * half is a miss. A password or subst hit still counts, and
+	 * this path does not compile.
+	 */
+	if ( mode == LISTED_FROM_EITHER )
+		nl_ready = nodelist_ready_for_listed();
+
+	/*
+	 * Snapshot the lists cfgfasl() selects right now. That is the
+	 * same active if-block findpwd() would see. Taken once so every
+	 * address in this session is judged against the same lists.
+	 * O_LST is not set yet, so an `if listed' around listedfrom
+	 * itself cannot choose the source of this check. tcp, inbound
+	 * and protected are already set by the time we get here.
+	 */
+	passwords = cfgfasl( CFG_PASSWORD );
+	substs = cfgfasl( CFG_SUBST );
+
+	for ( i = addrs; i; i = i->next ) {
+		int hit = 0;
+
+		if ( nl_ready && ndl_listed_one( &i->addr ))
+			hit = 1;
+		if ( !hit && ( fasl_has_addr( passwords, &i->addr )
+				|| fasl_has_addr( substs, &i->addr )))
+			hit = 1;
+		DEBUG(('N',2,"addrs_listed: %s, hit %d",
+			ftnaddrtoa( &i->addr ), hit));
+		if ( needall ) {
+			if ( !hit )
+				return 0;
+		} else if ( hit )
+			return 1;
+	}
+
+	return needall;
+}
+
+
 void phonetrans(char **pph, slist_t *phtr)
 {
 	int rc=1;slist_t *pht;
