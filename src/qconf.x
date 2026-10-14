@@ -4,11 +4,13 @@
 #*
 #* Columns: keyword, type, flags, default.
 #* flags: 1 = required at top level, 2 = not allowed inside if,
-#*        3 = both. Runtime bits 4/8 (seen in if / seen at top)
-#*        are OR'd on while parsing; killconfig must keep 1 and 2.
+#*        3 = both, 16 = only inside if (a top-level line is an
+#*        error). Runtime bits 4/8 (seen in if / seen at top) are
+#*        OR'd on while parsing; killconfig must keep 1, 2 and 16.
 #* modemconnect is not flag-1: readconfig() requires it only when
 #* `port' is set (outbound analog). Omit `port' for IP-only.
 #**********************************************************
+abortsession,C_STR,16,NULL
 address,C_ADDRL,1,NULL
 aftermail,C_STR,0,NULL
 aftersession,C_STR,0,NULL

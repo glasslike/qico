@@ -763,11 +763,32 @@ static int M_adr(BPS *bp, byte *arg)
 
 
 /*
+ * Queue M_ERR and mark the session failed. The frame is plaintext
+ * unless the caller has already turned crypt on: msgs() encrypts
+ * when opt_cr is O_YES. binkpsession() flkills the file list; this
+ * does not, so a REQ is not unlinked and FLO lines stay unmarked.
+ *
+ * Outbound uses S_BUSY for the same reason as EMSI: S_REDIAL would
+ * let failpolls schedule another call, S_FAILURE would mark the
+ * node undialable. Inbound S_FAILURE just stops the answerer.
+ */
+static void binkp_abort(BPS *bp, const char *why)
+{
+	log_rinfo( rnode );
+	write_log( "session aborted: %s", why );
+	binlog_set_result( "aborted" );
+	rnode->starttime = time( NULL );
+	msgs( BPM_ERR, "%s", why );
+	bp->rc = bp->to ? S_BUSY : S_FAILURE;
+}
+
+
+/*
  * Completes binkp handshake
  */
 static int binkp_hsdone(BPS *bp)
 {
-	char *p, tmp[256];
+	char *p, *why, tmp[256];
 
 	if ( bp->opt_nd == O_WE || bp->opt_nd == O_THEY )
 		bp->opt_nd = O_NO;
@@ -790,6 +811,19 @@ static int binkp_hsdone(BPS *bp)
 	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
 		rnode->options |= O_LST;
 
+	/*
+	 * Inbound has not sent M_OK yet (M_pwd queues it only after
+	 * this returns 1), so the peer is not decrypting. M_ERR stays
+	 * plaintext. Outbound already received M_OK; crypt is set up
+	 * first and the error is encrypted when the session asked for
+	 * it, same as binkd after_handshake.
+	 */
+	why = session_abort_text();
+	if ( why && !bp->to ) {
+		binkp_abort( bp, why );
+		return 0;
+	}
+
 	if (( bp->opt_cr & O_WE ) && ( bp->opt_cr & O_THEY )) {
 		unsigned long *keys;
 
@@ -806,6 +840,11 @@ static int binkp_hsdone(BPS *bp)
 		}
 		for( p = rnode->pwd; *p; p++ )
 			update_keys( keys, (int) *p );
+	}
+
+	if ( why ) {
+		binkp_abort( bp, why );
+		return 0;
 	}
 
 	log_rinfo( rnode );
@@ -1065,6 +1104,16 @@ static int M_pwd(BPS *bp, byte *arg)
 	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
 
+	/*
+	 * Finish the handshake before M_OK. A refusal then sends M_ERR
+	 * and never says the session is secure. On success, OPT/TRF/OK
+	 * are still queued before binkp_recv returns, so they go out
+	 * ahead of any M_FILE the main loop adds next.
+	 */
+	xfree( exp_pwd );
+	if ( !binkp_hsdone( bp ))
+		return 0;
+
 	snprintf( tmp, 128, "%s%s%s%s%s%s",
 		( bp->opt_nr & O_WANT ) ? " NR" : "",
 		( bp->opt_nd & O_THEY ) ? " ND" : "",
@@ -1077,9 +1126,7 @@ static int M_pwd(BPS *bp, byte *arg)
 
 	msgs( BPM_NUL, "TRF %lu %lu", totalm, totalf );
 	msgs( BPM_OK, "%ssecure", ( rnode->options & O_PWD ) ? "" : "non-" );
-
-	xfree( exp_pwd );
-	return binkp_hsdone( bp );
+	return 1;
 }
 
 

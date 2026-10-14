@@ -874,6 +874,15 @@ aftermail  $(binz)/toss
 # Binkp without session timeout
 ;if binkp: maxsession 0
 
+# refuse the session after the handshake, before any file.
+# abortsession is legal only inside if, and a reason is required.
+# the reason is the rest of the line: one word, or several words
+# separated by spaces.
+#
+#   if <condition> : abortsession <reason text>
+#
+;if address 2:203/910.1 : abortsession session refused
+
 # only send, if free space less 1Mb
 ;if sfree < 1024 $(spool)
 ; sendonly yes

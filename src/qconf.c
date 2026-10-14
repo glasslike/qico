@@ -2,6 +2,7 @@
 #include "headers.h"
 
 cfgstr_t configtab[CFG_NNN+1]={
+	{"abortsession",C_STR,16,NULL,NULL},
 	{"address",C_ADDRL,1,NULL,NULL},
 	{"aftermail",C_STR,0,NULL,NULL},
 	{"aftersession",C_STR,0,NULL,NULL},
