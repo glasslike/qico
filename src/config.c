@@ -704,12 +704,26 @@ void rereadconfig(int client)
     killsubsts( &psubsts );
     killconfig();
 
+    /*
+     * readconfig() reports problems through write_log() before any
+     * log file is open (log_done() just forced stderr). That stderr
+     * line is unchanged. On failure, also append the same text to
+     * masterlog when that keyword names a file. The session log is
+     * not touched. A good config drops the copy; log_init() below
+     * is still what attaches the process to the log.
+     */
+    log_config_errors( 1 );
     if ( !readconfig( configname )) {
+        const char *master;
+
         if ( client >= 0 )
             sendrpkt( 1, client, "Bad config, terminated");
         write_log( "There were some errors parsing config, exiting" );
+        master = cfgs( CFG_MASTERLOG );
+        log_config_errors_flush( master );
         exit( S_FAILURE );
     }
+    log_config_errors( 0 );
 
     if( !log_init( cfgs( CFG_MASTERLOG ), NULL )) {
         write_log( "can't open master log '%s', aborting.", ccs );

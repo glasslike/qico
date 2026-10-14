@@ -129,6 +129,10 @@ extern	void (*log_callback)(const char *str);
 int	log_init(const char *, const char *);
 void	vwrite_log(const char *, int);
 void	write_log(const char *, ...);
+/* Remember write_log() lines while a config is being read, then
+ * append that copy to masterlog if the read fails. See log.c. */
+void	log_config_errors(int);
+void	log_config_errors_flush(const char *);
 
 #ifdef NEED_DEBUG
 extern	int facilities_levels[256];

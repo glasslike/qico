@@ -93,6 +93,28 @@ static SLNCODE prioritynames[] =
 
 static int	log_type = LT_STDERR, mcpos, rcpos;
 static int	syslog_priority = LOG_INFO;
+/*
+ * Config is parsed before log_init(), and rereadconfig() calls
+ * log_done() first, so write_log() during that parse goes to stderr.
+ * A cold start under systemd still shows stderr in the journal. After
+ * the daemon has called to_dev_null(), stderr is /dev/null and a bad
+ * SIGHUP reload would otherwise leave no record.
+ *
+ * While cfg_err_capture is set, each write_log() line is kept in the
+ * same form vwrite_log() would put in a file. The copy is appended
+ * only when the read fails and masterlog is a real file. The session
+ * log is not used. The copy is dropped on success. log_type is not
+ * changed, so stderr output stays as it was and a successful load
+ * still belongs to log_init().
+ *
+ * cfg_err_arm is set by write_log() and taken by vwrite_log() before
+ * perl_on_log() runs. A hook that itself calls write_log() captures
+ * its own line and does not steal the outer one. write_debug_log()
+ * does not arm, so debug traffic is not copied into the config log.
+ */
+static int	cfg_err_capture;
+static int	cfg_err_arm;
+static slist_t	*cfg_err_lines;
 static ftnaddr_t *adr;
 static char	pktname[MAX_PATH + 5] = {0};
 static FILE	*cpkt = NULL;
@@ -184,6 +206,10 @@ void vwrite_log(const char *str, int dbg)
 	FILE		*log_f;
 	struct tm	t;
 	struct timeval	tv;
+	int		take_cfg_err = cfg_err_arm;
+
+	/* Claim the flag before any hook can call write_log() again. */
+	cfg_err_arm = 0;
 
 	xstrcpy( newstr, str, LARGE_STRING );
 	IFPerl( perl_on_log( newstr ));
@@ -207,6 +233,17 @@ void vwrite_log(const char *str, int dbg)
 
 	if ( log_callback && dbg )
 		log_callback( timedstr );
+
+	/*
+	 * xmalloc() logs and abort()s when it cannot allocate. Drop the
+	 * capture flag across slist_add() so that path cannot re-enter
+	 * this list and recurse.
+	 */
+	if ( take_cfg_err && cfg_err_capture ) {
+		cfg_err_capture = 0;
+		slist_add( &cfg_err_lines, timedstr );
+		cfg_err_capture = 1;
+	}
 
 	switch( log_type ) {
 	case LT_STDERR:
@@ -240,7 +277,64 @@ void write_log(const char *fmt, ...)
 	vsnprintf( str, LARGE_STRING, fmt, args );
 	va_end( args );
 
+	if ( cfg_err_capture )
+		cfg_err_arm = 1;
 	vwrite_log( str, 1 );
+}
+
+
+/*
+ * enable non-zero: start a fresh list. Zero: stop and drop the list.
+ * Called around readconfig(). Must not call write_log().
+ */
+void log_config_errors(int enable)
+{
+	cfg_err_arm = 0;
+	cfg_err_capture = 0;
+	slist_kill( &cfg_err_lines );
+	if ( enable )
+		cfg_err_capture = 1;
+}
+
+
+/*
+ * Append kept lines to path the same way LT_LOGFILE does (fopen "a",
+ * one timed line, no progname prefix). A leading '$' is a syslog
+ * facility, not a filename — log_init() would openlog() it, and
+ * creating a file of that name would be a new side effect. An
+ * unopenable path is skipped; the stderr lines are already written.
+ * Returns 1 only when the lines were written.
+ */
+static int append_config_errors(const char *path)
+{
+	FILE		*f;
+	slist_t		*p;
+
+	if ( !cfg_err_lines || !path || !*path || *path == '$' )
+		return 0;
+	f = fopen( path, "a" );
+	if ( !f )
+		return 0;
+	for ( p = cfg_err_lines; p; p = p->next )
+		if ( p->str )
+			fprintf( f, "%s\n", p->str );
+	fclose( f );
+	return 1;
+}
+
+
+/*
+ * Stop capturing and append the copy to masterlog only. The session
+ * log is left alone. The list is always freed. A missing or
+ * unopenable masterlog does not change the exit path: stderr already
+ * has the same lines.
+ */
+void log_config_errors_flush(const char *masterlog)
+{
+	cfg_err_capture = 0;
+	cfg_err_arm = 0;
+	append_config_errors( masterlog );
+	slist_kill( &cfg_err_lines );
 }
 
 
