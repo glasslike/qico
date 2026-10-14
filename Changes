@@ -1,8 +1,7 @@
 Version 0.60.3-dev
 ~~~~~~~~~~~~~~~~~~
 - config errors are appended to `masterlog` when the read fails and
-  that path is a file. stderr is unchanged. The session log is not
-  used, and a valid config writes nothing.
+  that path is a file. stderr is unchanged.
 - new keyword: `listedfrom` in_nodelist | in_configs | in_either.
   Default in_nodelist. in_configs: exact password or subst address.
   in_either: either source. A missing index is a miss, not a compile.
