@@ -64,6 +64,8 @@ Using
    For windows you can browse the latest CONNECT 256 lines log keys
    up \ down \ pgup \ pgdn \ home \ end \ ins \ del. Last two scroll on 2 lines.
    In the main window, the log is not flipping. In the chat window, I hope everything is clear.
+ * qcc screen and keys:
+   https://github.com/glasslike/qico/blob/dev/doc/qcc.md
 
 
 Notes
