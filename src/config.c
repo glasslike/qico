@@ -316,6 +316,18 @@ static int parsekeyword(const char *kw, const char *arg, const char *cfgname, in
 		return 0;
 	}
 
+	/*
+	 * IFONLY is the opposite of NOIF. abortsession at top level would
+	 * refuse every session, including ones the condition was meant to
+	 * select, so the line is a load error and the value is not stored.
+	 * An `if' / `else' block (curcond set) is the only legal place.
+	 */
+	if ( !curcond && ( configtab[i].flags & CFG_F_IFONLY )) {
+		write_log( "%s:%d: keyword '%s' can only be defined inside if-expression",
+			cfgname, line, kw );
+		return 0;
+	}
+
         for ( ci = configtab[i].items; ci; ci = ci->next ) {
 		slist_t *a = ci->condition, *b = curcond;
 
@@ -438,16 +450,17 @@ contl:
             if ( *p == '$' && isgraph( p[1] ))
                 if (( k = strchr( p, '=' )))
                     *k = ' ';
-            t = strchr( p, ' ' );
             /*
-            if ( !t )
-                t = strchr( p, '\n' );
-            if ( !t )
-                t = strchr( p, '\r' );
-            */
-            if( !t )
+             * The value is the rest of the line after the first
+             * space. No space means an empty value. Leave t on the
+             * existing terminator: stepping past it reads the tail
+             * of the previous line left in s[].
+             */
+            t = strchr( p, ' ' );
+            if ( t )
+                *t++ = 0;
+            else
                 t = strchr( p, 0 );
-            *t++ = 0;
         } else
             t = p + 1;
 
@@ -787,9 +800,10 @@ void killconfig(void)
             xfree(c);
         }
         configtab[i].items=NULL;
-        /* Keep required/nonif from qconf.x; drop only the parse-time
-         * seen bits. Zeroing everything made the next readconfig()
-         * treat address/inbound/log as optional. */
+        /* Keep required/nonif/ifonly from qconf.x; drop only the
+         * parse-time seen bits. Zeroing everything made the next
+         * readconfig() treat address/inbound/log as optional, and
+         * would also forget that abortsession is illegal at top level. */
         configtab[i].flags &= CFG_F_STATIC;
     }
 }
