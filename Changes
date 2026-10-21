@@ -10,6 +10,9 @@ Version 0.60.3-dev
   Default in_nodelist. in_configs: exact password or subst address.
   in_either: either source. A missing index is a miss, not a compile.
 - `binkplisted` default is now yes (`no` keeps BinkP unlisted).
+- qcc: optional today's session history (--enable-qcc-binlog).
+  qcc -B <path> reads the binlog itself. l/L on the master window.
+  The daemon protocol is unchanged.
 
 
 Version 0.60.2

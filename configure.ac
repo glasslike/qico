@@ -522,6 +522,21 @@ fi
 AC_MSG_RESULT($enable_hydra8k)
 
 
+dnl qcc session history. Off unless requested: qcc then does not
+dnl link the frame reader or the l/L keys. The mailer always
+dnl writes the binlog the same way; this switch does not touch it.
+AC_MSG_CHECKING([for qcc binary-log history])
+AC_ARG_ENABLE([qcc-binlog],
+	AC_HELP_STRING([--enable-qcc-binlog],[read today's binlog sessions in qcc]),
+	enable_qcc_binlog=$enableval,
+	enable_qcc_binlog=no)
+if test "x$enable_qcc_binlog" = "xyes"; then
+	AC_DEFINE(WITH_QCC_BINLOG,1,[qcc reads the T-Hist binary session log])
+fi
+AC_MSG_RESULT($enable_qcc_binlog)
+AM_CONDITIONAL([QCC_BINLOG],[test "x$enable_qcc_binlog" = "xyes"])
+
+
 dnl Check for Binkp protocol support
 AC_MSG_CHECKING([for BinkP protocol support])
 AC_ARG_ENABLE(binkp,

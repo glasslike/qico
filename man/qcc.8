@@ -3,7 +3,7 @@
 qcc \- ncurses frontend for qico ftn mailer.
 .SH SYNOPSIS
 .B qcc
-.RB [ \-nhvPaw ]
+.RB [ \-nhvPawB ]
 .SH DESCRIPTION
 .B qcc
 is a graphical ncurses-based frontend for qico ftn mailer.
@@ -25,6 +25,17 @@ Use
 for connect to server. also may request password from user, if
 .I password
 is '-' (-w-).
+.TP
+.BI \-B path
+Today's sessions from the binary log at
+.I path.
+Built only when qcc was configured with
+.BR \-\-enable\-qcc-binlog .
+On the master window,
+.B l
+and
+.B L
+open and close that list. The daemon is not asked to read the file.
 .TP
 .BI \-n
 Start
