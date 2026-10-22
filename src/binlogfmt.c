@@ -2,8 +2,8 @@
  * T-Hist v3 frame layout.
  *
  * Byte order, offsets, CRC and the frame wrapper live here so the
- * mailer and qcc cannot drift apart. qcc links this file only when
- * --enable-qcc-binlog is given. The mailer always links it, and
+ * mailer and qcc cannot drift apart. qcc links this file unless
+ * configured with --disable-qcc-binlog. The mailer always links it, and
  * binlog_write() still owns the lock, the tail repair and the append.
  **********************************************************/
 

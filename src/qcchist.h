@@ -1,5 +1,5 @@
 /**********************************************************
- * qcc session history, built only with --enable-qcc-binlog.
+ * qcc session history. --disable-qcc-binlog leaves it out of qcc.
  *
  * The view reads the binlog file itself. It is not a daemon
  * command and it is not a line slot.

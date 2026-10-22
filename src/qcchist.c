@@ -1,7 +1,7 @@
 /**********************************************************
  * qcc session-history view.
  *
- * Compiled only with --enable-qcc-binlog. The daemon is not
+ * Left out by --disable-qcc-binlog. The daemon is not
  * involved: qcc opens the binlog path from -B and paints this
  * screen itself. The wire protocol does not grow a command.
  *

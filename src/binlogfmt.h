@@ -1,8 +1,8 @@
 /**********************************************************
  * T-Hist v3 frame layout.
  *
- * Shared by the mailer writer (binlog.c) and, when qcc is built
- * with --enable-qcc-binlog, by the history reader. Nothing here
+ * Shared by the mailer writer (binlog.c) and by the qcc history
+ * reader, unless qcc was configured with --disable-qcc-binlog. Nothing here
  * opens a file, takes a lock, or logs. The writer still decides
  * when a frame is appended and still repairs a torn tail itself.
  *
