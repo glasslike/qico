@@ -119,6 +119,9 @@
 #include "qslib.h"
 #include "md5q.h"
 #include "clserv.h"
+#ifdef WITH_QCC_BINLOG
+#include "qcchist.h"
+#endif
 
 #define MAXMH		10		/* number of lines for queue.
 					   (up window of screen) */
@@ -177,10 +180,12 @@ static char *hm[]={
 	"K","ill, ",
 	"W","/","U","/","I","/","H",", ",
 	"P","oll, "
-	"In","f","o, "
 	"Fr","e","q, ",
 	"S","end, ",
 	"0-9;Tab",", ",
+#ifdef WITH_QCC_BINLOG
+	"L","og, ",
+#endif
 	"Q","uit",
 NULL
 };
@@ -216,6 +221,17 @@ static char *hi[]={
 NULL
 };
 
+#ifdef WITH_QCC_BINLOG
+/* Shown only while the history view is up. The master hint has no room. */
+static char *hh[]={
+	"L","eave, ",
+	"Up","/","Dn",", ",
+	"PgUp","/","PgDn",", ",
+	"Q","uit",
+NULL
+};
+#endif
+
 static char *help[]={
 	"\01* qico control center %s, sisoft\\\\trg edition. help about keys:",
 	"\01 All windows: F10 - quit, Tab/Right - next and Left - previous window",
@@ -229,6 +245,9 @@ static char *help[]={
 	"\01  K/k - kill files for node     Space - reset wait cycle",
 	"\01  S/s - send file,  p - poll    F8 - close window",
 	"\01  E/e - request file",
+#ifdef WITH_QCC_BINLOG
+	"\01  L/l - today's session history (-B binlog)",
+#endif
 	"\01           !Warning: all keys are case sensitive!",
 NULL
 };
@@ -278,7 +297,11 @@ void write_log(char *str, ...)
     va_end( args );
     waddnstr( wlog, s + ( *s == 1 ), COL );
     wattroff( wlog, A_BOLD );
-    if ( currslot < 0 )
+	if ( currslot < 0
+#ifdef WITH_QCC_BINLOG
+		&& !hist_on()
+#endif
+	)
         wrefresh( wlog );
 }
 
@@ -289,6 +312,9 @@ static void usage(char *ex)
                "-P port      connect to <port> (default: qicoui or %u)\n"
 	       "-a host      connect to <host> (default: localhost)\n"
 	       "-w password  set <password> for connect\n"
+#ifdef WITH_QCC_BINLOG
+	       "-B path      today's sessions from this binlog\n"
+#endif
 	       "-n           disable sound (silent)\n"
 	       "-h           this help screen\n"
                "-v           show version\n"
@@ -338,12 +364,212 @@ static void draw_screen(void)
 	refresh();
 }
 
+/*
+ * Application keypad (turned on by keypad()) makes the two clients
+ * disagree. PuTTY then sends arrows as ESC O A and the numeric pad as
+ * ESC O q for "1". MobaXterm often keeps CSI arrows, ESC [ A, and may
+ * insert a modifier: ESC [ 1 ; 5 C. terminfo names only one of these.
+ * A raw ESC is collected and mapped here. Tab, "`" and the number row
+ * are single bytes and never enter this path. define_key() is not used:
+ * it rewrites the terminfo trie and drops the other client's keys.
+ */
+static int next_esc_byte(void)
+{
+	int ch;
+
+	wtimeout( stdscr, 200 );
+	ch = getch();
+	if ( ch == ERR || ch >= KEY_MIN )
+		return ch;
+	return ch & 0xff;
+}
+
+
+/* SS3: ESC O x. Arrows, F1-F4, and the numeric pad. */
+static int map_ss3(int c)
+{
+	switch ( c ) {
+	case 'A': return KEY_UP;
+	case 'B': return KEY_DOWN;
+	case 'C': return KEY_RIGHT;
+	case 'D': return KEY_LEFT;
+	case 'H': return KEY_HOME;
+	case 'F': return KEY_END;
+	case 'P': return KEY_F(1);
+	case 'Q': return KEY_F(2);
+	case 'R': return KEY_F(3);
+	case 'S': return KEY_F(4);
+	case 'p': return '0';
+	case 'q': return '1';
+	case 'r': return '2';
+	case 's': return '3';
+	case 't': return '4';
+	case 'u': return '5';
+	case 'v': return '6';
+	case 'w': return '7';
+	case 'x': return '8';
+	case 'y': return '9';
+	case 'M': return '\n';
+	default: return ERR;
+	}
+}
+
+
+static int map_tilde(int num)
+{
+	switch ( num ) {
+	case 1: case 7: return KEY_HOME;
+	case 4: case 8: return KEY_END;
+	case 5: return KEY_PPAGE;
+	case 6: return KEY_NPAGE;
+	case 11: return KEY_F(1);
+	case 12: return KEY_F(2);
+	case 13: return KEY_F(3);
+	case 14: return KEY_F(4);
+	case 15: return KEY_F(5);
+	case 17: return KEY_F(6);
+	case 18: return KEY_F(7);
+	case 19: return KEY_F(8);
+	case 20: return KEY_F(9);
+	case 21: return KEY_F(10);
+	default: return ERR;
+	}
+}
+
+
+static int map_arrow_letter(int c)
+{
+	switch ( c ) {
+	case 'A': return KEY_UP;
+	case 'B': return KEY_DOWN;
+	case 'C': return KEY_RIGHT;
+	case 'D': return KEY_LEFT;
+	case 'H': return KEY_HOME;
+	case 'F': return KEY_END;
+	default: return ERR;
+	}
+}
+
+
+/* CSI: ESC [ ... final. final is a letter or '~'. */
+static int map_csi(const unsigned char *s, int n)
+{
+	int i = 2, num = 0, key;
+
+	if ( n >= 3 && s[2] == '[' && n == 4 ) {
+		if ( s[3] >= 'A' && s[3] <= 'E' )
+			return KEY_F( 1 + ( s[3] - 'A' ));
+		return ERR;
+	}
+	if ( n == 4 && s[2] == 'O' && s[3] >= 'P' && s[3] <= 'S' )
+		return KEY_F( 1 + ( s[3] - 'P' ));
+	if ( n == 3 ) {
+		key = map_arrow_letter( s[2] );
+		if ( key != ERR )
+			return key;
+	}
+	if ( i < n && s[i] >= '0' && s[i] <= '9' ) {
+		while ( i < n && s[i] >= '0' && s[i] <= '9' )
+			num = num * 10 + ( s[i++] - '0' );
+	}
+	if ( i < n && s[i] == ';' ) {
+		i++;
+		while ( i < n && s[i] >= '0' && s[i] <= '9' )
+			i++;
+	}
+	if ( i + 1 != n )
+		return ERR;
+	if ( s[i] == '~' )
+		return map_tilde( num );
+	/* ESC [ A, or ESC [ 1 ; 5 C and the same with no number. */
+	if ( num == 0 || num == 1 )
+		return map_arrow_letter( s[i] );
+	return ERR;
+}
+
+
+/*
+ * The first getch() is whatever terminfo already recognized: arrows,
+ * function keys, Tab, digits. This parser runs only when that call
+ * returns a bare ESC, which is the case terminfo did not know.
+ * A lone ESC stays ESC (close chat, cancel input). A finished CSI or
+ * SS3 that we do not recognize is dropped, so its digits cannot select
+ * a window and it is not reported as Esc.
+ */
+static int readkey(void)
+{
+	unsigned char seq[16];
+	int ch, n, key;
+
+	ch = getch();
+	if ( ch != 0x1b )
+		return ch;
+	ch = next_esc_byte();
+	if ( ch == ERR ) {
+		nodelay( stdscr, TRUE );
+		return 0x1b;
+	}
+	if ( ch >= KEY_MIN ) {
+		nodelay( stdscr, TRUE );
+		return ch;
+	}
+	if ( ch == 'O' ) {
+		int c2 = next_esc_byte();
+
+		nodelay( stdscr, TRUE );
+		if ( c2 == ERR )
+			return 0x1b;
+		if ( c2 >= KEY_MIN )
+			return c2;
+		key = map_ss3( c2 );
+		/* Unknown SS3 is dropped. Returning Esc would close a chat. */
+		return key;
+	}
+	if ( ch != '[' ) {
+		ungetch( ch );
+		nodelay( stdscr, TRUE );
+		return 0x1b;
+	}
+	seq[0] = 0x1b;
+	seq[1] = '[';
+	n = 2;
+	while ( n < (int) sizeof( seq ) - 1 ) {
+		ch = next_esc_byte();
+		if ( ch == ERR )
+			break;
+		if ( ch >= KEY_MIN ) {
+			nodelay( stdscr, TRUE );
+			return ch;
+		}
+		seq[n++] = (unsigned char) ch;
+		if ( ( ch >= 'A' && ch <= 'Z' ) || ( ch >= 'a' && ch <= 'z' ) || ch == '~' )
+			break;
+	}
+	nodelay( stdscr, TRUE );
+	if ( n < 3 )
+		return 0x1b;
+	key = map_csi( seq, n );
+	/* An unknown finished sequence is ignored, not turned into Esc. */
+	return key;
+}
+
+
 static void initscreen(void)
 {
 	initscr();start_color();
 	cbreak();noecho();nonl();
 	nodelay(stdscr,TRUE);
 	keypad(stdscr,TRUE);
+#ifdef NCURSES_VERSION
+	/*
+	 * How long ncurses waits after a raw ESC before it gives up and
+	 * returns the ESC. The library default is often 1000 ms. 200 ms
+	 * still joins a sequence that arrived split, and a lone Esc stays
+	 * responsive. A key that terminfo already knows is returned by the
+	 * first getch() and does not wait.
+	 */
+	ESCDELAY = 200;
+#endif
 	leaveok(stdscr,FALSE);
 	if(LINES<MH*2)MH=LINES/2-1;
 	init_pair(1,COLOR_BLUE,COLOR_BLACK);
@@ -402,6 +628,10 @@ static void freshhelp(void)
 {
 	int i,k=0;
 	char **hlp=(edm?hi:((currslot<0)?hm:(slots[currslot]->chat?hc:hl)));
+#ifdef WITH_QCC_BINLOG
+	if ( !edm && currslot < 0 && hist_on() )
+		hlp = hh;
+#endif
 	werase(whelp);
 	for(i=0;hlp[i];i++)if(*hlp[i]) {
 		if(i%2)wattron(whelp,COLOR_PAIR(8));
@@ -419,18 +649,34 @@ static void freshhelp(void)
 
 static void freshhdr(void)
 {
+	const char *wname = currslot >= 0 ? slots[currslot]->tty : "master";
+	const char *htitle = currslot >= 0 ? slots[currslot]->header : m_header;
+#ifdef WITH_QCC_BINLOG
+	if ( currslot < 0 && hist_on() ) {
+		wname = "Session log";
+		htitle = NULL;
+	}
+#endif
 	werase(whdr);
 	wattron(whdr,COLOR_PAIR(14));
 	mvwprintw(whdr,0,0,"[%d/%d] ",currslot+1,allslots);
 	wattron(whdr,COLOR_PAIR(13));
-	waddnstr(whdr,currslot>=0?slots[currslot]->tty:"master", QCC_TTYLEN);
+	waddnstr(whdr, wname, QCC_TTYLEN);
 	waddch(whdr,' ');
 	wattron(whdr,COLOR_PAIR(12));
-	waddstr(whdr,currslot>=0?slots[currslot]->header:m_header);
+	if ( htitle )
+		waddstr(whdr, htitle);
 }
 
 static void freshstatus(void)
 {
+#ifdef WITH_QCC_BINLOG
+	if ( currslot < 0 && hist_on() ) {
+		werase( wstat );
+		waddnstr( wstat, hist_status(), COL - 2 );
+		return;
+	}
+#endif
 	werase(wstat);
 	waddstr(wstat,currslot>=0?slots[currslot]->status:m_status);
 }
@@ -622,11 +868,24 @@ static void freshqueue(void)
 static void freshall(void)
 {
 	freshhdr();wnoutrefresh(whdr);
-	freshstatus();wnoutrefresh(wstat);
+	freshstatus();
+	wnoutrefresh(wstat);
 	freshhelp();wnoutrefresh(whelp);
 	if(currslot>=0)freshslot();
+#ifdef WITH_QCC_BINLOG
+	else if ( hist_on() )
+		hist_draw_card( wmain );
+#endif
 	    else freshqueue();
 	wnoutrefresh(wmain);
+#ifdef WITH_QCC_BINLOG
+	if ( currslot < 0 && hist_on() ) {
+		hist_draw_list();
+		return;
+	}
+	/* The list window covers the same cells as a line log. */
+	hist_hide_list();
+#endif
 	redrawwin(((currslot<0)?wlog:slots[currslot]->wlog));
 	wrefresh((currslot<0)?wlog:slots[currslot]->wlog);
 }
@@ -705,7 +964,7 @@ static int inputstr(char *str, char *name, int mode)
 	mvwaddch(iw,0,1,' ');waddstr(iw,name);
 	wnoutrefresh(iw);doupdate();
 	while(!getkey&&!quitflag) {
-		ch=getch();fr=0;
+		ch=readkey();fr=0;
 		if(ch>=32&&ch<255) {
 			if(sl>=(mode?(mode==1?40:5):(MAX_STRING-2))||(mode&&!strchr(mode==1?"icdhny:/.@1234567890 ":"1234567890",ch))){xbeep();}
 			    else {
@@ -1213,19 +1472,31 @@ static int getmessages(char *bbx)
 			switch(type) {
 			    case QC_SLINE:
 				restrcpy(&m_status,(char*)data);
-				if(currslot<0) {
+				if(currslot<0
+#ifdef WITH_QCC_BINLOG
+					&& !hist_on()
+#endif
+				) {
 					freshstatus();wrefresh(wstat);
 				}
 				break;
 			    case QC_TITLE:
 				restrcpy(&m_header,(char*)data);
-				if(currslot<0) {
+				if(currslot<0
+#ifdef WITH_QCC_BINLOG
+					&& !hist_on()
+#endif
+				) {
 					freshhdr();wrefresh(whdr);
 				}
 				break;
 			    case QC_LOGIT:
 				logit((char*)data,wlog,-1);
-				if(currslot<0&&!edm)wrefresh(wlog);
+				if(currslot<0&&!edm
+#ifdef WITH_QCC_BINLOG
+					&& !hist_on()
+#endif
+				)wrefresh(wlog);
 				break;
 			    case QC_MYDATA:
 				restrcpy(&myaddr,(char*)data);
@@ -1250,7 +1521,11 @@ static int getmessages(char *bbx)
 					if(lastfirst>=q->n)q_first=q->n;
 					if(lastpos>=q->n)q_pos=q->n;
 				}
-				if(currslot<0) {
+				if(currslot<0
+#ifdef WITH_QCC_BINLOG
+					&& !hist_on()
+#endif
+				) {
 					freshqueue();wrefresh(wmain);
 				}
 				break;
@@ -1281,7 +1556,13 @@ int main(int argc, char **argv, char **envp)
 
 	initsetproctitle( argc, argv, envp );
 
- 	while((c=getopt(argc,argv,"hnvP:a:w:"))!=-1) {
+ 	while((c=getopt(argc,argv,
+#ifdef WITH_QCC_BINLOG
+		"hnvB:P:a:w:"
+#else
+		"hnvP:a:w:"
+#endif
+		))!=-1) {
 		switch(c) {
 		    case 'P':
 			if(optarg&&*optarg)port=xstrdup(optarg);
@@ -1292,6 +1573,11 @@ int main(int argc, char **argv, char **envp)
 		    case 'w':
 			if(optarg&&*optarg)pwd=xstrdup(optarg);
 			break;
+#ifdef WITH_QCC_BINLOG
+		    case 'B':
+			if(optarg&&*optarg)hist_set_path(optarg);
+			break;
+#endif
 		    case 'n':
 			beepdisable=1;
 			break;
@@ -1379,12 +1665,20 @@ int main(int argc, char **argv, char **envp)
 				wresize(wmain,MH,COL);wresize(wlog,LOGSIZE,COL);
 				mvwin(wstat,LINES-2,2);wresize(wstat,1,COL-2);
 				mvwin(whelp,LINES-1,1);wresize(whelp,1,COL);
-				wresize(whdr,1,COL-2);freshall();
+				wresize(whdr,1,COL-2);
+#ifdef WITH_QCC_BINLOG
+				hist_resize(MH);
+#endif
+				freshall();
 			}
 			sizechanged=0;
  		}
 #endif
 		tim=time(NULL);
+#ifdef WITH_QCC_BINLOG
+		if ( currslot < 0 && hist_on() && hist_poll( tim ))
+			freshall();
+#endif
 		tt=localtime(&tim);wattron(whdr,COLOR_PAIR(15));
 		mvwprintw(whdr,0,COL-11,"%02d:%02d:%02d",tt->tm_hour,tt->tm_min,tt->tm_sec);
 		wnoutrefresh(whdr);wnoutrefresh(wstat);
@@ -1405,8 +1699,7 @@ int main(int argc, char **argv, char **envp)
 			if(ch<0)quitflag=1;
 		} while(ch>0);
 		if(rc>0&&FD_ISSET(0,&rfds)) {
-		ch=getch();
-		if(ch==0x1b)ch=getch();
+		ch=readkey();
 		if(ch==ERR)continue;
 #ifdef KEY_RESIZE
 		if(ch==KEY_RESIZE)continue;
@@ -1481,15 +1774,48 @@ int main(int argc, char **argv, char **envp)
 				break;
 			}
 			if(currslot<0)switch(ch) {
+#ifdef WITH_QCC_BINLOG
+			case 'l': case 'L': {
+				const char *err = hist_toggle( MH );
+
+				if ( err ) {
+					xbeep();
+					write_log( "%s", err );
+				} else
+					freshall();
+				break;
+			}
+#endif
 			case KEY_UP:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_key( KEY_UP, LOGSIZE > 1 ? LOGSIZE - 1 : 1 );
+					freshall();
+					break;
+				}
+#endif
 				if(q_pos>1)if(--q_pos<q_first)q_first--;
 				freshqueue();wrefresh(wmain);
 				break;
 			case KEY_DOWN:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_key( KEY_DOWN, LOGSIZE > 1 ? LOGSIZE - 1 : 1 );
+					freshall();
+					break;
+				}
+#endif
 				if(q_pos<q_max)if(++q_pos>=q_first+MH-1)q_first++;
 				freshqueue();wrefresh(wmain);
 				break;
 			case KEY_PPAGE:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_key( KEY_PPAGE, LOGSIZE > 1 ? LOGSIZE - 1 : 1 );
+					freshall();
+					break;
+				}
+#endif
 				if(q_pos>1) {
 					q_pos-=MH-2;
 					q_first-=MH-2;
@@ -1499,6 +1825,13 @@ int main(int argc, char **argv, char **envp)
 				freshqueue();wrefresh(wmain);
 				break;
 			case KEY_NPAGE:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_key( KEY_NPAGE, LOGSIZE > 1 ? LOGSIZE - 1 : 1 );
+					freshall();
+					break;
+				}
+#endif
 				if(q_pos<q_max) {
 					q_pos+=MH-2;
 					q_first+=MH-2;
@@ -1508,10 +1841,18 @@ int main(int argc, char **argv, char **envp)
 				freshqueue();wrefresh(wmain);
 				break;
 			case KEY_HOME:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() )
+					break;
+#endif
 				q_pos=q_first=1;
 				freshqueue();wrefresh(wmain);
 				break;
 			case KEY_END:
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() )
+					break;
+#endif
 				q_pos=q_max;
 				q_first=(q_max>=MH-1)?(q_max-MH+2):1;
 				freshqueue();wrefresh(wmain);
