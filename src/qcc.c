@@ -365,68 +365,192 @@ static void draw_screen(void)
 }
 
 /*
- * Terminals do not agree on function-key bytes. terminfo names one
- * sequence; the others still have to become KEY_F(n), or qcc treats
- * the tail of F1 as an ordinary character.
+ * Application keypad (turned on by keypad()) makes the two clients
+ * disagree. PuTTY then sends arrows as ESC O A and the numeric pad as
+ * ESC O q for "1". MobaXterm often keeps CSI arrows, ESC [ A, and may
+ * insert a modifier: ESC [ 1 ; 5 C. terminfo names only one of these.
+ * A raw ESC is collected and mapped here. Tab, "`" and the number row
+ * are single bytes and never enter this path. define_key() is not used:
+ * it rewrites the terminfo trie and drops the other client's keys.
  */
-static void bind_fnkeys(void)
+static int next_esc_byte(void)
 {
-#ifdef NCURSES_VERSION
-	static const struct fnkey {
-		const char *seq;
-		int key;
-	} keys[] = {
-		{ "\033OP",   KEY_F(1) },
-		{ "\033OQ",   KEY_F(2) },
-		{ "\033OR",   KEY_F(3) },
-		{ "\033OS",   KEY_F(4) },
-		{ "\033[11~", KEY_F(1) },
-		{ "\033[12~", KEY_F(2) },
-		{ "\033[13~", KEY_F(3) },
-		{ "\033[14~", KEY_F(4) },
-		{ "\033[15~", KEY_F(5) },
-		{ "\033[17~", KEY_F(6) },
-		{ "\033[18~", KEY_F(7) },
-		{ "\033[19~", KEY_F(8) },
-		{ "\033[20~", KEY_F(9) },
-		{ "\033[21~", KEY_F(10) },
-		{ "\033[[A",  KEY_F(1) },
-		{ "\033[[B",  KEY_F(2) },
-		{ "\033[[C",  KEY_F(3) },
-		{ "\033[[D",  KEY_F(4) },
-		{ "\033[[E",  KEY_F(5) },
-		{ "\033[OP",  KEY_F(1) },
-		{ "\033[OQ",  KEY_F(2) },
-		{ "\033[OR",  KEY_F(3) },
-		{ "\033[OS",  KEY_F(4) },
-		{ NULL, 0 }
-	};
-	int i;
+	int ch;
 
-	for ( i = 0; keys[i].seq != NULL; i++ )
-		define_key( (char *) keys[i].seq, keys[i].key );
-#endif
+	wtimeout( stdscr, 200 );
+	ch = getch();
+	if ( ch == ERR || ch >= KEY_MIN )
+		return ch;
+	return ch & 0xff;
+}
+
+
+/* SS3: ESC O x. Arrows, F1-F4, and the numeric pad. */
+static int map_ss3(int c)
+{
+	switch ( c ) {
+	case 'A': return KEY_UP;
+	case 'B': return KEY_DOWN;
+	case 'C': return KEY_RIGHT;
+	case 'D': return KEY_LEFT;
+	case 'H': return KEY_HOME;
+	case 'F': return KEY_END;
+	case 'P': return KEY_F(1);
+	case 'Q': return KEY_F(2);
+	case 'R': return KEY_F(3);
+	case 'S': return KEY_F(4);
+	case 'p': return '0';
+	case 'q': return '1';
+	case 'r': return '2';
+	case 's': return '3';
+	case 't': return '4';
+	case 'u': return '5';
+	case 'v': return '6';
+	case 'w': return '7';
+	case 'x': return '8';
+	case 'y': return '9';
+	case 'M': return '\n';
+	default: return ERR;
+	}
+}
+
+
+static int map_tilde(int num)
+{
+	switch ( num ) {
+	case 1: case 7: return KEY_HOME;
+	case 4: case 8: return KEY_END;
+	case 5: return KEY_PPAGE;
+	case 6: return KEY_NPAGE;
+	case 11: return KEY_F(1);
+	case 12: return KEY_F(2);
+	case 13: return KEY_F(3);
+	case 14: return KEY_F(4);
+	case 15: return KEY_F(5);
+	case 17: return KEY_F(6);
+	case 18: return KEY_F(7);
+	case 19: return KEY_F(8);
+	case 20: return KEY_F(9);
+	case 21: return KEY_F(10);
+	default: return ERR;
+	}
+}
+
+
+static int map_arrow_letter(int c)
+{
+	switch ( c ) {
+	case 'A': return KEY_UP;
+	case 'B': return KEY_DOWN;
+	case 'C': return KEY_RIGHT;
+	case 'D': return KEY_LEFT;
+	case 'H': return KEY_HOME;
+	case 'F': return KEY_END;
+	default: return ERR;
+	}
+}
+
+
+/* CSI: ESC [ ... final. final is a letter or '~'. */
+static int map_csi(const unsigned char *s, int n)
+{
+	int i = 2, num = 0, key;
+
+	if ( n >= 3 && s[2] == '[' && n == 4 ) {
+		if ( s[3] >= 'A' && s[3] <= 'E' )
+			return KEY_F( 1 + ( s[3] - 'A' ));
+		return ERR;
+	}
+	if ( n == 4 && s[2] == 'O' && s[3] >= 'P' && s[3] <= 'S' )
+		return KEY_F( 1 + ( s[3] - 'P' ));
+	if ( n == 3 ) {
+		key = map_arrow_letter( s[2] );
+		if ( key != ERR )
+			return key;
+	}
+	if ( i < n && s[i] >= '0' && s[i] <= '9' ) {
+		while ( i < n && s[i] >= '0' && s[i] <= '9' )
+			num = num * 10 + ( s[i++] - '0' );
+	}
+	if ( i < n && s[i] == ';' ) {
+		i++;
+		while ( i < n && s[i] >= '0' && s[i] <= '9' )
+			i++;
+	}
+	if ( i + 1 != n )
+		return ERR;
+	if ( s[i] == '~' )
+		return map_tilde( num );
+	/* ESC [ A, or ESC [ 1 ; 5 C and the same with no number. */
+	if ( num == 0 || num == 1 )
+		return map_arrow_letter( s[i] );
+	return ERR;
 }
 
 
 /*
- * nodelay returns ESC as soon as that byte is here, before O P or
- * [11~ has arrived. Reading one more byte then steals the tail.
- * Put ESC back and let the keypad parser wait out a short gap.
- * A lone ESC comes back when that wait ends.
+ * The first getch() is whatever terminfo already recognized: arrows,
+ * function keys, Tab, digits. This parser runs only when that call
+ * returns a bare ESC, which is the case terminfo did not know.
+ * A lone ESC stays ESC (close chat, cancel input). A finished CSI or
+ * SS3 that we do not recognize is dropped, so its digits cannot select
+ * a window and it is not reported as Esc.
  */
 static int readkey(void)
 {
-	int ch;
+	unsigned char seq[16];
+	int ch, n, key;
 
 	ch = getch();
 	if ( ch != 0x1b )
 		return ch;
-	ungetch( ch );
-	wtimeout( stdscr, 200 );
-	ch = getch();
+	ch = next_esc_byte();
+	if ( ch == ERR ) {
+		nodelay( stdscr, TRUE );
+		return 0x1b;
+	}
+	if ( ch >= KEY_MIN ) {
+		nodelay( stdscr, TRUE );
+		return ch;
+	}
+	if ( ch == 'O' ) {
+		int c2 = next_esc_byte();
+
+		nodelay( stdscr, TRUE );
+		if ( c2 == ERR )
+			return 0x1b;
+		if ( c2 >= KEY_MIN )
+			return c2;
+		key = map_ss3( c2 );
+		/* Unknown SS3 is dropped. Returning Esc would close a chat. */
+		return key;
+	}
+	if ( ch != '[' ) {
+		ungetch( ch );
+		nodelay( stdscr, TRUE );
+		return 0x1b;
+	}
+	seq[0] = 0x1b;
+	seq[1] = '[';
+	n = 2;
+	while ( n < (int) sizeof( seq ) - 1 ) {
+		ch = next_esc_byte();
+		if ( ch == ERR )
+			break;
+		if ( ch >= KEY_MIN ) {
+			nodelay( stdscr, TRUE );
+			return ch;
+		}
+		seq[n++] = (unsigned char) ch;
+		if ( ( ch >= 'A' && ch <= 'Z' ) || ( ch >= 'a' && ch <= 'z' ) || ch == '~' )
+			break;
+	}
 	nodelay( stdscr, TRUE );
-	return ch;
+	if ( n < 3 )
+		return 0x1b;
+	key = map_csi( seq, n );
+	/* An unknown finished sequence is ignored, not turned into Esc. */
+	return key;
 }
 
 
@@ -436,7 +560,16 @@ static void initscreen(void)
 	cbreak();noecho();nonl();
 	nodelay(stdscr,TRUE);
 	keypad(stdscr,TRUE);
-	bind_fnkeys();
+#ifdef NCURSES_VERSION
+	/*
+	 * How long ncurses waits after a raw ESC before it gives up and
+	 * returns the ESC. The library default is often 1000 ms. 200 ms
+	 * still joins a sequence that arrived split, and a lone Esc stays
+	 * responsive. A key that terminfo already knows is returned by the
+	 * first getch() and does not wait.
+	 */
+	ESCDELAY = 200;
+#endif
 	leaveok(stdscr,FALSE);
 	if(LINES<MH*2)MH=LINES/2-1;
 	init_pair(1,COLOR_BLUE,COLOR_BLACK);
