@@ -453,7 +453,7 @@ static void freshhdr(void)
 	const char *htitle = currslot >= 0 ? slots[currslot]->header : m_header;
 #ifdef WITH_QCC_BINLOG
 	if ( currslot < 0 && hist_on() ) {
-		wname = "History";
+		wname = "Session log";
 		htitle = NULL;
 	}
 #endif

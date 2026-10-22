@@ -395,22 +395,42 @@ static void build_line(char *dst, int max, int col, const bl_sess_t *s)
 }
 
 
+static void fill_status(void)
+{
+	unsigned in = 0, out = 0, failed = 0;
+	unsigned long long rcv = 0, snt = 0;
+	char traffic[16], rcvd[16], sent[16];
+	int i;
+
+	for ( i = 0; i < nrecs; i++ ) {
+		if ( recs[i].status & BL_IN )
+			in++;
+		if ( recs[i].status & BL_OUT )
+			out++;
+		if ( !( recs[i].status & BL_OK ))
+			failed++;
+		rcv += recs[i].bytes_rcvd;
+		snt += recs[i].bytes_sent;
+	}
+	format_bytes( rcv + snt, traffic, sizeof( traffic ));
+	format_bytes( rcv, rcvd, sizeof( rcvd ));
+	format_bytes( snt, sent, sizeof( sent ));
+	snprintf( status_buf, sizeof( status_buf ),
+		"Total: In/Out %u/%u, Failed %u, Traffic %s, Rcv/Snt %s/%s",
+		in, out, failed, traffic, rcvd, sent );
+}
+
+
 static void sync_caption(void)
 {
 	const bl_sess_t *s;
 
 	title_buf[0] = '\0';
-	status_buf[0] = '\0';
+	fill_status();
 	if ( nrecs <= 0 || cursor < 0 || cursor >= nrecs )
 		return;
 	s = &recs[cursor];
 	full_addr( title_buf, sizeof( title_buf ), s );
-	if ( s->status & BL_OK )
-		snprintf( status_buf, sizeof( status_buf ), "OK" );
-	else if ( s->result[0] )
-		snprintf( status_buf, sizeof( status_buf ), "%s", s->result );
-	else
-		snprintf( status_buf, sizeof( status_buf ), "failed" );
 }
 
 
@@ -713,6 +733,7 @@ static int catch_up(time_t now)
 		if ( !grown ) {
 			free( fresh );
 			measure_addrs();
+			sync_caption();
 			return 0;
 		}
 		recs = grown;
@@ -1035,8 +1056,7 @@ void hist_draw_card(WINDOW *wmain)
 		struct tm *tm = localtime( &started );
 
 		if ( tm )
-			snprintf( when, sizeof( when ), "%02d/%02d/%04d %02d:%02d:%02d",
-				tm->tm_mday, tm->tm_mon + 1, tm->tm_year + 1900,
+			snprintf( when, sizeof( when ), "%02d:%02d:%02d",
 				tm->tm_hour, tm->tm_min, tm->tm_sec );
 		else
 			snprintf( when, sizeof( when ), "-" );
@@ -1054,9 +1074,9 @@ void hist_draw_card(WINDOW *wmain)
 			badges = 5;
 		if ( badges && edge > badges ) {
 			if ( s->status & BL_LST )
-				draw_half( wmain, 0, edge - 5, 5, "[lst]", COLOR_PAIR( 6 ));
+				draw_half( wmain, 0, edge - 5, 5, "[lst]", COLOR_PAIR( 2 ) | A_BOLD );
 			if ( s->status & BL_PWD )
-				draw_half( wmain, 0, edge - badges, 5, "[pwd]", COLOR_PAIR( 4 ));
+				draw_half( wmain, 0, edge - badges, 5, "[pwd]", COLOR_PAIR( 2 ) | A_BOLD );
 			draw_lr( wmain, 0, edge - badges, left, COLOR_PAIR( 7 ), NULL, 0 );
 		} else
 			draw_lr( wmain, 0, edge, left, COLOR_PAIR( 7 ), NULL, 0 );
