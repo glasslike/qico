@@ -364,12 +364,79 @@ static void draw_screen(void)
 	refresh();
 }
 
+/*
+ * Terminals do not agree on function-key bytes. terminfo names one
+ * sequence; the others still have to become KEY_F(n), or qcc treats
+ * the tail of F1 as an ordinary character.
+ */
+static void bind_fnkeys(void)
+{
+#ifdef NCURSES_VERSION
+	static const struct fnkey {
+		const char *seq;
+		int key;
+	} keys[] = {
+		{ "\033OP",   KEY_F(1) },
+		{ "\033OQ",   KEY_F(2) },
+		{ "\033OR",   KEY_F(3) },
+		{ "\033OS",   KEY_F(4) },
+		{ "\033[11~", KEY_F(1) },
+		{ "\033[12~", KEY_F(2) },
+		{ "\033[13~", KEY_F(3) },
+		{ "\033[14~", KEY_F(4) },
+		{ "\033[15~", KEY_F(5) },
+		{ "\033[17~", KEY_F(6) },
+		{ "\033[18~", KEY_F(7) },
+		{ "\033[19~", KEY_F(8) },
+		{ "\033[20~", KEY_F(9) },
+		{ "\033[21~", KEY_F(10) },
+		{ "\033[[A",  KEY_F(1) },
+		{ "\033[[B",  KEY_F(2) },
+		{ "\033[[C",  KEY_F(3) },
+		{ "\033[[D",  KEY_F(4) },
+		{ "\033[[E",  KEY_F(5) },
+		{ "\033[OP",  KEY_F(1) },
+		{ "\033[OQ",  KEY_F(2) },
+		{ "\033[OR",  KEY_F(3) },
+		{ "\033[OS",  KEY_F(4) },
+		{ NULL, 0 }
+	};
+	int i;
+
+	for ( i = 0; keys[i].seq != NULL; i++ )
+		define_key( (char *) keys[i].seq, keys[i].key );
+#endif
+}
+
+
+/*
+ * nodelay returns ESC as soon as that byte is here, before O P or
+ * [11~ has arrived. Reading one more byte then steals the tail.
+ * Put ESC back and let the keypad parser wait out a short gap.
+ * A lone ESC comes back when that wait ends.
+ */
+static int readkey(void)
+{
+	int ch;
+
+	ch = getch();
+	if ( ch != 0x1b )
+		return ch;
+	ungetch( ch );
+	wtimeout( stdscr, 200 );
+	ch = getch();
+	nodelay( stdscr, TRUE );
+	return ch;
+}
+
+
 static void initscreen(void)
 {
 	initscr();start_color();
 	cbreak();noecho();nonl();
 	nodelay(stdscr,TRUE);
 	keypad(stdscr,TRUE);
+	bind_fnkeys();
 	leaveok(stdscr,FALSE);
 	if(LINES<MH*2)MH=LINES/2-1;
 	init_pair(1,COLOR_BLUE,COLOR_BLACK);
@@ -764,7 +831,7 @@ static int inputstr(char *str, char *name, int mode)
 	mvwaddch(iw,0,1,' ');waddstr(iw,name);
 	wnoutrefresh(iw);doupdate();
 	while(!getkey&&!quitflag) {
-		ch=getch();fr=0;
+		ch=readkey();fr=0;
 		if(ch>=32&&ch<255) {
 			if(sl>=(mode?(mode==1?40:5):(MAX_STRING-2))||(mode&&!strchr(mode==1?"icdhny:/.@1234567890 ":"1234567890",ch))){xbeep();}
 			    else {
@@ -1499,8 +1566,7 @@ int main(int argc, char **argv, char **envp)
 			if(ch<0)quitflag=1;
 		} while(ch>0);
 		if(rc>0&&FD_ISSET(0,&rfds)) {
-		ch=getch();
-		if(ch==0x1b)ch=getch();
+		ch=readkey();
 		if(ch==ERR)continue;
 #ifdef KEY_RESIZE
 		if(ch==KEY_RESIZE)continue;
