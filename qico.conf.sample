@@ -619,7 +619,7 @@ binkpopt	MRBCT
 # restores that. When yes, O_LST is set from `listedfrom' and
 # needalllisted, so `if listed', FREQ listed status and /LST in
 # the options log work the same as on EMSI.
-binkplisted	yes
+;binkplisted	no
 
 # HTTP(S) proxy.
 # format: proxy host[:port] [login [password]]
