@@ -72,6 +72,8 @@
 #include <sys/ioctl.h>
 #endif
 
+#include <termios.h>
+
 #include <signal.h>
 #include <ctype.h>
 
@@ -496,14 +498,80 @@ static int map_csi(const unsigned char *s, int n)
  * SS3 that we do not recognize is dropped, so its digits cannot select
  * a window and it is not reported as Esc.
  */
+/*
+ * nodelay() on NetBSD libcurses sets VMIN=0. select() then says stdin
+ * is readable with an empty queue, so a timeout armed on that result
+ * waits on every refresh and the cursor is drawn while getch() sits.
+ * FIONREAD is the queued byte count. The timeout is only for a byte
+ * that has already arrived: keypad assembly must not block in fgetc
+ * on the rest of an ESC sequence, and an idle poll must not wait.
+ * After getch(), put VMIN back to 1 so the main loop's select() sleeps
+ * until a real key or a socket event.
+ */
+static int stdin_queued(void)
+{
+	int n = 0;
+
+#ifdef FIONREAD
+	if ( ioctl( 0, FIONREAD, &n ) < 0 )
+		return 0;
+	return n > 0;
+#else
+	fd_set rfds;
+	struct timeval tv;
+
+	FD_ZERO( &rfds );
+	FD_SET( 0, &rfds );
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+	return select( 1, &rfds, NULL, NULL, &tv ) > 0;
+#endif
+}
+
+
+static void stdin_for_select(void)
+{
+	struct termios t;
+
+	if ( tcgetattr( 0, &t ) < 0 )
+		return;
+	if ( t.c_cc[VMIN] == 1 && t.c_cc[VTIME] == 0 )
+		return;
+	t.c_cc[VMIN] = 1;
+	t.c_cc[VTIME] = 0;
+	tcsetattr( 0, TCSANOW, &t );
+}
+
+
 static int readkey(void)
 {
 	unsigned char seq[16];
 	int ch, n, key;
 
+	/*
+	 * getch() still runs when the kernel queue is empty. curses may
+	 * be holding a byte from ungetch(), and that byte is not visible
+	 * to FIONREAD. nodelay makes that call return at once.
+	 */
+	if ( stdin_queued() )
+		wtimeout( stdscr, 200 );
+	else
+		nodelay( stdscr, TRUE );
 	ch = getch();
-	if ( ch != 0x1b )
+	nodelay( stdscr, TRUE );
+	/* kbs is ^? or ^H on this terminal. ncurses maps either to
+	 * KEY_BACKSPACE. NetBSD libcurses often returns the raw byte,
+	 * and the input line only deletes on KEY_BACKSPACE.
+	 * Termios is restored after this byte is classified. An ESC
+	 * still has a tail to read, and tcsetattr must not run first. */
+	if ( ch == 0x7f || ch == '\b' ) {
+		stdin_for_select();
+		return KEY_BACKSPACE;
+	}
+	if ( ch != 0x1b ) {
+		stdin_for_select();
 		return ch;
+	}
 	ch = next_esc_byte();
 	if ( ch == ERR ) {
 		nodelay( stdscr, TRUE );
@@ -678,7 +746,7 @@ static void freshstatus(void)
 	}
 #endif
 	werase(wstat);
-	waddstr(wstat,currslot>=0?slots[currslot]->status:m_status);
+	waddstr(wstat,SS(currslot>=0?slots[currslot]->status:m_status));
 }
 
 static char *timestr(time_t tim)
@@ -1687,6 +1755,7 @@ int main(int argc, char **argv, char **envp)
 			wnoutrefresh(slots[currslot]->wlog);
 		}
 		doupdate();
+		stdin_for_select();
 		FD_ZERO(&rfds);
 		FD_SET(0,&rfds);
 		FD_SET(sock,&rfds);

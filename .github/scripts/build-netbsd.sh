@@ -38,11 +38,13 @@ step() {
 
 step "Install NetBSD build packages"
 # pkgin is listed first because the base image may only have pkg_add.
-# ncurses gives qcc, zip packs the drop. perl is not a qico dependency
-# here (see the header), but autoconf and automake are perl scripts, so
-# the package is pulled in either way.
+# qcc links the base libcurses in /usr/lib. pkgsrc ncurses is not
+# installed and not put on the link line, so configure cannot prefer it.
+# zip packs the drop. perl is not a qico dependency here (see the header),
+# but autoconf and automake are perl scripts, so the package is pulled in
+# either way.
 /usr/sbin/pkg_add -U pkgin git gmake autoconf automake pkgconf \
-	flex bison ncurses zip
+	flex bison zip
 
 # The host owns the synced tree; git in the VM runs as another user and
 # would otherwise refuse it ("dubious ownership"). The stamp in qico -v
@@ -59,12 +61,10 @@ cp /tmp/autogen.sh autogen.sh
 rm -f /tmp/autogen.sh
 chmod +x autogen.sh
 
-# pkgsrc installs under /usr/pkg, which the base compiler does not search.
-# The ncurses headers sit in their own subdirectory, and -R records the
-# library path in the binaries so they still start outside this build.
-CPPFLAGS="-I/usr/pkg/include -I/usr/pkg/include/ncurses"
-LDFLAGS="-L/usr/pkg/lib -Wl,-R/usr/pkg/lib"
-export CPPFLAGS LDFLAGS
+# No CPPFLAGS/LDFLAGS for /usr/pkg. The base compiler already finds
+# libcurses in /usr/lib. Pointing it at /usr/pkg would select pkgsrc
+# ncurses when that library is present, which this drop does not use.
+# BUILD.md has the optional ncurses flags for a build that wants them.
 
 step "Generate configure and Makefiles"
 ./autogen.sh
@@ -95,6 +95,17 @@ done
 # stray --enable-perl would show up here.
 if readelf -d src/qico | grep -q 'NEEDED.*libperl'; then
 	echo "qico is linked against libperl; this drop must not be" >&2
+	exit 1
+fi
+# "libcurses" is not a substring of "libncurses" (an extra "n" sits
+# between "lib" and "curses"), so the two checks do not overlap.
+# Base curses keeps the drop free of a pkgsrc library path.
+if readelf -d src/qcc | grep -q 'NEEDED.*libncurses'; then
+	echo "qcc is linked against libncurses; this drop uses base curses" >&2
+	exit 1
+fi
+if ! readelf -d src/qcc | grep -q 'NEEDED.*libcurses'; then
+	echo "qcc is not linked against base libcurses" >&2
 	exit 1
 fi
 
@@ -129,8 +140,8 @@ install -m 644 README Changes LICENSE \
 
 # The dynamic libraries each binary was linked against, read from the ELF
 # NEEDED entries rather than from the package list: this is what the target
-# host actually has to provide. Most of these live under /usr/pkg, so the
-# list doubles as the pkgsrc shopping list.
+# host actually has to provide. qcc's curses is the base library, so nothing
+# here comes from pkgsrc.
 step "Write requirements.txt"
 needed() {
 	readelf -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'
@@ -142,15 +153,8 @@ needed() {
 		printf '\n%s:\n' "$bin"
 		needed "$stage/$bin" | sed 's/^/  /'
 	done
-	# libncurses comes from pkgsrc, and the loader finds it through this
-	# baked-in path. Printing it turns a "shared object not found" on the
-	# target host into a one-line diagnosis.
-	printf '\nLibrary path recorded in the binaries:\n'
-	readelf -d "$stage/qcc" \
-		| sed -n -e 's/.*(RPATH).*\[\(.*\)\].*/  \1/p' \
-			 -e 's/.*(RUNPATH).*\[\(.*\)\].*/  \1/p'
-	printf '\nOnly qcc needs a package: pkgin install ncurses\n'
-	printf 'qico and qctl use base system libraries only.\n'
+	printf '\nAll three binaries use base system libraries only.\n'
+	printf 'qcc is linked with the base curses, not pkgsrc ncurses.\n'
 	printf '\nThis build has no Perl hooks: linking libperl would\n'
 	printf 'tie the binary to one pkgsrc perl release. Build from\n'
 	printf 'source with --enable-perl if you need them.\n'

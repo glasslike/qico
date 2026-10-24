@@ -86,14 +86,13 @@ sudo emerge --ask net-ftn/qico
 USE flags, custom directories and the move from the older qico-xe overlay
 are described in the overlay's README.
 
-### NetBSD (`pkgsrc`)
+### NetBSD
 
-Built in CI on NetBSD 11 (amd64) by `.github/scripts/build-netbsd.sh`,
-which follows the same steps. Three things differ from Linux:
+The default is the base system curses (`libcurses` in `/usr/lib`). That is
+what `.github/scripts/build-netbsd.sh` builds on NetBSD 11 (amd64). pkgsrc
+ncurses is optional and is not installed for this recipe. Two things differ
+from Linux:
 
-- Packages come from pkgsrc and install under `/usr/pkg`, which the base
-  compiler does not search. `CPPFLAGS` and `LDFLAGS` point it there; `-R`
-  records the path in the binaries so they start outside the build shell.
 - Use **gmake**; the system `make` is not GNU make.
 - Remove the shipped `src/flaglex.c`, `src/flagexp.c` and `src/flagexp.h`
   before compiling. flex and bison are installed, so make regenerates
@@ -102,9 +101,35 @@ which follows the same steps. Three things differ from Linux:
 
 NetBSD's `/bin/sh` is not bash; the commands below are plain POSIX sh.
 Package installation and `gmake install` need root (`su root -c '...'`).
+Do not set `CPPFLAGS` or `LDFLAGS` for `/usr/pkg` here. The base compiler
+already finds `libcurses`. Those flags would make `configure` prefer pkgsrc
+ncurses when it is installed.
 
 ```sh
-su root -c 'pkg_add -U pkgin git gmake autoconf automake pkgconf flex bison ncurses'
+su root -c 'pkgin -y install git gmake autoconf automake pkgconf flex bison'
+
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/glasslike/qico.git
+cd qico
+
+./autogen.sh
+./configure --prefix=/usr/local --enable-binkp
+rm -f src/flaglex.c src/flagexp.c src/flagexp.h
+gmake -j"$(sysctl -n hw.ncpu)"
+su root -c 'gmake install'
+```
+
+`qico`, `qctl`, and `qcc` then use base system libraries only.
+
+**Optional: pkgsrc ncurses.** To link `qcc` with pkgsrc ncurses instead of
+the base curses, install that package and point the compiler at `/usr/pkg`.
+The base compiler does not search `/usr/pkg`. `-R` records the path in the
+binary so `qcc` still starts outside the build shell. Only `qcc` needs the
+package; `qico` and `qctl` stay on base system libraries.
+
+```sh
+su root -c 'pkgin -y install git gmake autoconf automake pkgconf flex bison ncurses'
 
 mkdir -p ~/src
 cd ~/src
@@ -120,10 +145,6 @@ rm -f src/flaglex.c src/flagexp.c src/flagexp.h
 gmake -j"$(sysctl -n hw.ncpu)"
 su root -c 'gmake install'
 ```
-
-If `pkgin` is already set up, `pkgin install` takes the same package list.
-`ncurses` is only needed for `qcc`; `qico` and `qctl` use base system
-libraries.
 
 **Perl hooks on NetBSD.** pkgsrc keeps `libperl.so` in perl's own `CORE`
 directory, whose name contains the perl version
