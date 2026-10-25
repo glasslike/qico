@@ -4,17 +4,17 @@ sbin_PROGRAMS = qico
 bin_PROGRAMS = qctl @QCC@
 EXTRA_PROGRAMS = qcc
 
-noinst_HEADERS = binlog.h binkp.h charset.h clserv.h crc.h defs.h \
+noinst_HEADERS = binlog.h binlogfmt.h binkp.h charset.h clserv.h crc.h defs.h \
 	ftn.h globals.h have.h headers.h hydra.h \
 	janus.h ls_zmodem.h \
 	mailer.h md5q.h modem.h nodelist.h \
 	qcconst.h replace.h share.h slists.h tcp.h timer.h tty.h types.h \
-	qconf.x qconf.h qipc.h qslib.h tools.h
+	qconf.x qconf.h qipc.h qslib.h tools.h qcchist.h
 
 EXTRA_DIST = x2c.awk
 
 BUILT_SOURCES = qconf.c qconf.h flagexp.c flaglex.c
-qico_SOURCES = binlog.c call.c clserv.c config.c crc.c daemon.c \
+qico_SOURCES = binlog.c binlogfmt.c call.c clserv.c config.c crc.c daemon.c \
 	emsi.c freq.c ftn.c globals.c hydra.c janus.c log.c \
 	ls_zglue.c ls_zmodem.c ls_zreceive.c ls_zsend.c main.c md5q.c \
 	modem.c nodelist.c outbound.c protfm.c qconf.c qipc.c \
@@ -34,6 +34,9 @@ qctl_SOURCES = qctl.c clserv.c md5q.c qslib.c
 qctl_LDADD = @LIBOBJS@ @LIB_MALLOC@
 
 qcc_SOURCES = qcc.c clserv.c md5q.c qslib.c
+if QCC_BINLOG
+qcc_SOURCES += binlogfmt.c crc.c qcchist.c
+endif
 qcc_LDADD = @LIBOBJS@ @LIB_MALLOC@ @QCCLIBS@
 qcc_LDFLAGS =
 

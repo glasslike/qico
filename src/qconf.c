@@ -2,6 +2,7 @@
 #include "headers.h"
 
 cfgstr_t configtab[CFG_NNN+1]={
+	{"abortsession",C_STR,16,NULL,NULL},
 	{"address",C_ADDRL,1,NULL,NULL},
 	{"aftermail",C_STR,0,NULL,NULL},
 	{"aftersession",C_STR,0,NULL,NULL},
@@ -12,7 +13,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"autoskip",C_STRL,0,NULL,NULL},
 	{"autosuspend",C_STRL,0,NULL,NULL},
 	{"autoticskip",C_YESNO,0,NULL,"no"},
-	{"binkplisted",C_YESNO,0,NULL,"no"},
+	{"binkplisted",C_YESNO,0,NULL,"yes"},
 	{"binkpopt",C_STR,0,NULL,"MB"},
 	{"binlog",C_PATH,0,NULL,NULL},
 	{"bsooutbound",C_PATH,2,NULL,NULL},
@@ -61,6 +62,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"jtxwin",C_INT,0,NULL,"0"},
 	{"kill-old-bsy",C_STR,2,NULL,NULL},
 	{"killbadpkt",C_YESNO,0,NULL,"no"},
+	{"listedfrom",C_STR,0,NULL,"in_nodelist"},
 	{"localcp",C_PATH,0,NULL,"none"},
 	{"lockdir",C_PATH,0,NULL,"/tmp"},
 	{"log",C_PATH,1,NULL,NULL},

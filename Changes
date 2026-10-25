@@ -1,3 +1,21 @@
+Version 0.60.3
+~~~~~~~~~~~~~~
+- fix config parser: a keyword with no value is empty.
+  It used to take the tail of the previous line.
+- config errors are appended to `masterlog` when the read fails and
+  that path is a file.
+- fix qcc: an unset status no longer crashes NetBSD libcurses at startup.
+- qcc new screen: today's session history (--disable-qcc-binlog leaves it out).
+  qcc -B <path> reads the binlog itself. l/L on the master window.
+- new keyword: `listedfrom` in_nodelist | in_configs | in_either.
+  Where `listed' comes from. Default in_nodelist: the address is in
+  the nodelist index. in_configs: it has a password or subst line.
+  in_either: either of those. A missing index is not listed, and
+  this check does not compile one.
+- new keyword: `abortsession` <reason> (only inside `if').
+  End the session after the handshake, before files.
+
+
 Version 0.60.2
 ~~~~~~~~~~~~~~
 - new keyword: `binlog`.

@@ -30,46 +30,7 @@
 
 #include "headers.h"
 #include "binlog.h"
-#include "crc.h"
-
-/* Signature is the four letters HIST and format version 3. */
-#define BL_SIG_LEN	5
-#define BL_REC_LEN	256
-/*
- * Usable text is 205 bytes. Record byte 255 stays zero, which version
- * 3 requires of the session image. An index >= 206 still means the
- * string is absent.
- */
-#define BL_TEXT_LEN	205
-#define BL_ABSENT	255
-/* Length byte, CRC-32, and the repeated length byte. */
-#define BL_FRAME_WRAP	6
-
-#define BL_IN		0x0001	/* incoming session */
-#define BL_OUT		0x0002	/* outgoing session */
-#define BL_OK		0x0004	/* finished without an error */
-#define BL_PWD		0x0008	/* password-protected session */
-#define BL_LST		0x0010	/* address is in the configured nodelist */
-
-/* Offsets inside the 256-byte record. */
-#define BL_OFF_ZONE	0
-#define BL_OFF_NET	2
-#define BL_OFF_NODE	4
-#define BL_OFF_POINT	6
-#define BL_OFF_START	8
-#define BL_OFF_RCVD	16
-#define BL_OFF_SENT	24
-#define BL_OFF_NRCVD	32
-#define BL_OFF_NSENT	36
-#define BL_OFF_DUR	40
-#define BL_OFF_STATUS	44
-#define BL_OFF_INDEX	46
-#define BL_OFF_STR	50
-
-static const unsigned char bl_sig[BL_SIG_LEN] = { 'H', 'I', 'S', 'T', 0x03 };
-
-/* 50-byte header + 205 bytes of text + the reserved zero at index 255. */
-typedef char bl_record_fits[( BL_OFF_STR + BL_TEXT_LEN + 1 == BL_REC_LEN ) ? 1 : -1];
+#include "binlogfmt.h"
 
 /* Inbound peer from answer_mode(), or NULL on an outbound session. */
 static char *peer_addr;
@@ -119,33 +80,6 @@ const char *binlog_noted_result(void)
 time_t binlog_began(void)
 {
 	return began_at;
-}
-
-
-static void put_u16(unsigned char *p, unsigned v)
-{
-	p[0] = (unsigned char) ( v & 0xff );
-	p[1] = (unsigned char) (( v >> 8 ) & 0xff );
-}
-
-
-static void put_u32(unsigned char *p, unsigned v)
-{
-	p[0] = (unsigned char) ( v & 0xff );
-	p[1] = (unsigned char) (( v >> 8 ) & 0xff );
-	p[2] = (unsigned char) (( v >> 16 ) & 0xff );
-	p[3] = (unsigned char) (( v >> 24 ) & 0xff );
-}
-
-
-static void put_u64(unsigned char *p, unsigned long long v)
-{
-	int i;
-
-	for ( i = 0; i < 8; i++ ) {
-		p[i] = (unsigned char) ( v & 0xff );
-		v >>= 8;
-	}
 }
 
 
@@ -337,16 +271,16 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 	 * No address leaves the four fields zero. The layout has no
 	 * "absent" flag, so a reader displays that as 0:0/0.0.
 	 */
-	put_u16( rec + BL_OFF_ZONE, addr ? ftn16( addr->z ) : 0 );
-	put_u16( rec + BL_OFF_NET, addr ? ftn16( addr->n ) : 0 );
-	put_u16( rec + BL_OFF_NODE, addr ? ftn16( addr->f ) : 0 );
-	put_u16( rec + BL_OFF_POINT, addr ? ftn16( addr->p ) : 0 );
-	put_u64( rec + BL_OFF_START, u64_time( started ));
-	put_u64( rec + BL_OFF_RCVD, u64_bytes( bytes_rcvd ));
-	put_u64( rec + BL_OFF_SENT, u64_bytes( bytes_sent ));
-	put_u32( rec + BL_OFF_NRCVD, u32_files( files_rcvd ));
-	put_u32( rec + BL_OFF_NSENT, u32_files( files_sent ));
-	put_u32( rec + BL_OFF_DUR, u32_duration( duration ));
+	bl_put_u16( rec + BL_OFF_ZONE, addr ? ftn16( addr->z ) : 0 );
+	bl_put_u16( rec + BL_OFF_NET, addr ? ftn16( addr->n ) : 0 );
+	bl_put_u16( rec + BL_OFF_NODE, addr ? ftn16( addr->f ) : 0 );
+	bl_put_u16( rec + BL_OFF_POINT, addr ? ftn16( addr->p ) : 0 );
+	bl_put_u64( rec + BL_OFF_START, u64_time( started ));
+	bl_put_u64( rec + BL_OFF_RCVD, u64_bytes( bytes_rcvd ));
+	bl_put_u64( rec + BL_OFF_SENT, u64_bytes( bytes_sent ));
+	bl_put_u32( rec + BL_OFF_NRCVD, u32_files( files_rcvd ));
+	bl_put_u32( rec + BL_OFF_NSENT, u32_files( files_sent ));
+	bl_put_u32( rec + BL_OFF_DUR, u32_duration( duration ));
 
 	/* Exactly one direction bit. Listed is T-Hist status bit 4. */
 	status = inbound ? BL_IN : BL_OUT;
@@ -356,7 +290,7 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 		status |= BL_PWD;
 	if ( listed )
 		status |= BL_LST;
-	put_u16( rec + BL_OFF_STATUS, status );
+	bl_put_u16( rec + BL_OFF_STATUS, status );
 
 	/*
 	 * String 0 is the failure phrase. A successful session leaves it
@@ -375,57 +309,6 @@ static void fill_record(unsigned char *rec, const ftnaddr_t *addr,
 	rec[BL_OFF_INDEX + 1] = (unsigned char) append_str( text, &used, sysname );
 	rec[BL_OFF_INDEX + 2] = (unsigned char) append_str( text, &used, location );
 	rec[BL_OFF_INDEX + 3] = (unsigned char) append_str( text, &used, sysop );
-}
-
-
-/*
- * Version 3 stores the image only through its last non-zero byte, and
- * never stores byte 255. The walk starts at 254 for that reason. A
- * completely zero image still yields length 1.
- */
-static unsigned trim_len(const unsigned char *rec)
-{
-	unsigned len = 254;
-
-	while ( len > 0 && rec[len] == 0 )
-		len--;
-	return len + 1;
-}
-
-
-/* CRC-32/ISO-HDLC of the length byte and the image bytes that follow it. */
-static unsigned frame_crc(const unsigned char *len_and_image, unsigned n)
-{
-	return (unsigned) CRC32_FINISH( crc32block( (void *) len_and_image, n ));
-}
-
-
-/*
- * 1: a whole frame with matching length bytes and CRC.
- * 0: these bytes are not a frame.
- * -1: the buffer ends before the claimed frame does.
- */
-static int frame_valid(const unsigned char *b, size_t n, unsigned *adv)
-{
-	unsigned L, got;
-
-	if ( n < 1 )
-		return -1;
-	L = b[0];
-	if ( L < 1 || L > 255 )
-		return 0;
-	if ( n < (size_t) L + BL_FRAME_WRAP )
-		return -1;
-	if ( b[L + 5] != (unsigned char) L )
-		return 0;
-	got = (unsigned) b[1 + L]
-		| ((unsigned) b[2 + L] << 8)
-		| ((unsigned) b[3 + L] << 16)
-		| ((unsigned) b[4 + L] << 24);
-	if ( got != frame_crc( b, 1 + L ))
-		return 0;
-	*adv = L + BL_FRAME_WRAP;
-	return 1;
 }
 
 
@@ -449,7 +332,7 @@ static int last_frame_good(int fd, off_t end)
 	if ( lseek( fd, start, SEEK_SET ) < 0
 		|| read_full( fd, b, (size_t) L + BL_FRAME_WRAP ) < 0 )
 		return 0;
-	return frame_valid( b, (size_t) L + BL_FRAME_WRAP, &adv ) == 1;
+	return bl_frame_valid( b, (size_t) L + BL_FRAME_WRAP, &adv ) == 1;
 }
 
 
@@ -473,7 +356,7 @@ static off_t scan_good_end(int fd, off_t end)
 
 		if ( lseek( fd, pos, SEEK_SET ) < 0 || read_full( fd, b, n ) < 0 )
 			return -1;
-		v = frame_valid( b, n, &adv );
+		v = bl_frame_valid( b, n, &adv );
 		if ( v == 1 ) {
 			pos += (off_t) adv;
 			good = pos;
@@ -500,7 +383,7 @@ static off_t scan_good_end(int fd, off_t end)
 				if ( lseek( fd, later, SEEK_SET ) < 0
 					|| read_full( fd, b, ln ) < 0 )
 					return -1;
-				lv = frame_valid( b, ln, &ladv );
+				lv = bl_frame_valid( b, ln, &ladv );
 				if ( lv == 1 ) {
 					found = 1;
 					break;
@@ -624,11 +507,11 @@ void binlog_write(const char *path, const ftnaddr_t *addr,
 		}
 	}
 
-	plen = trim_len( rec );
+	plen = bl_trim_len( rec );
 	frame[0] = (unsigned char) plen;
 	memcpy( frame + 1, rec, plen );
-	crc = frame_crc( frame, 1 + plen );
-	put_u32( frame + 1 + plen, crc );
+	crc = bl_frame_crc( frame, 1 + plen );
+	bl_put_u32( frame + 1 + plen, crc );
 	frame[1 + plen + 4] = (unsigned char) plen;
 
 	if ( lseek( fd, end, SEEK_SET ) < 0

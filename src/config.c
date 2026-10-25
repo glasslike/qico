@@ -316,6 +316,18 @@ static int parsekeyword(const char *kw, const char *arg, const char *cfgname, in
 		return 0;
 	}
 
+	/*
+	 * IFONLY is the opposite of NOIF. abortsession at top level would
+	 * refuse every session, including ones the condition was meant to
+	 * select, so the line is a load error and the value is not stored.
+	 * An `if' / `else' block (curcond set) is the only legal place.
+	 */
+	if ( !curcond && ( configtab[i].flags & CFG_F_IFONLY )) {
+		write_log( "%s:%d: keyword '%s' can only be defined inside if-expression",
+			cfgname, line, kw );
+		return 0;
+	}
+
         for ( ci = configtab[i].items; ci; ci = ci->next ) {
 		slist_t *a = ci->condition, *b = curcond;
 
@@ -438,16 +450,17 @@ contl:
             if ( *p == '$' && isgraph( p[1] ))
                 if (( k = strchr( p, '=' )))
                     *k = ' ';
-            t = strchr( p, ' ' );
             /*
-            if ( !t )
-                t = strchr( p, '\n' );
-            if ( !t )
-                t = strchr( p, '\r' );
-            */
-            if( !t )
+             * The value is the rest of the line after the first
+             * space. No space means an empty value. Leave t on the
+             * existing terminator: stepping past it reads the tail
+             * of the previous line left in s[].
+             */
+            t = strchr( p, ' ' );
+            if ( t )
+                *t++ = 0;
+            else
                 t = strchr( p, 0 );
-            *t++ = 0;
         } else
             t = p + 1;
 
@@ -647,6 +660,16 @@ int readconfig(const char *cfgname)
                     configtab[i].keyword);
             rc=0;
         }
+    /* listedfrom is a token, not a free string. Check every copy,
+     * including values that sit inside if, so a typo fails at load
+     * even when that if is false right now. The default installed
+     * for an omitted keyword is in_nodelist. */
+    for(ci=configtab[CFG_LISTEDFROM].items;ci;ci=ci->next)
+        if(!listedfrom_ok(ci->value.v_char)) {
+            write_log("keyword 'listedfrom' must be in_nodelist, in_configs or in_either (got '%s')",
+                ci->value.v_char ? ci->value.v_char : "");
+            rc=0;
+        }
     /* asooutbound/bsooutbound are nonif but not each-required; one of
      * them must be set or outbound_init() has nothing to scan. */
     if(!cfgs(CFG_ASOOUTBOUND) && !cfgs(CFG_BSOOUTBOUND)) {
@@ -694,12 +717,26 @@ void rereadconfig(int client)
     killsubsts( &psubsts );
     killconfig();
 
+    /*
+     * readconfig() reports problems through write_log() before any
+     * log file is open (log_done() just forced stderr). That stderr
+     * line is unchanged. On failure, also append the same text to
+     * masterlog when that keyword names a file. The session log is
+     * not touched. A good config drops the copy; log_init() below
+     * is still what attaches the process to the log.
+     */
+    log_config_errors( 1 );
     if ( !readconfig( configname )) {
+        const char *master;
+
         if ( client >= 0 )
             sendrpkt( 1, client, "Bad config, terminated");
         write_log( "There were some errors parsing config, exiting" );
+        master = cfgs( CFG_MASTERLOG );
+        log_config_errors_flush( master );
         exit( S_FAILURE );
     }
+    log_config_errors( 0 );
 
     if( !log_init( cfgs( CFG_MASTERLOG ), NULL )) {
         write_log( "can't open master log '%s', aborting.", ccs );
@@ -763,9 +800,10 @@ void killconfig(void)
             xfree(c);
         }
         configtab[i].items=NULL;
-        /* Keep required/nonif from qconf.x; drop only the parse-time
-         * seen bits. Zeroing everything made the next readconfig()
-         * treat address/inbound/log as optional. */
+        /* Keep required/nonif/ifonly from qconf.x; drop only the
+         * parse-time seen bits. Zeroing everything made the next
+         * readconfig() treat address/inbound/log as optional, and
+         * would also forget that abortsession is illegal at top level. */
         configtab[i].flags &= CFG_F_STATIC;
     }
 }

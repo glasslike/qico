@@ -134,6 +134,15 @@ extern	int (*receive_callback)(char *);
 int	receivecb(char *);
 void	makeflist(flist_t **, ftnaddr_t *, int);
 void	flkill(flist_t **, int);
+/*
+ * Non-empty abortsession text for this session, or NULL.
+ * Call only after the remote address list, the password bit and
+ * the listed bit are set: `if address', `if protected' and
+ * `if listed' are then the same tests maxsession sees.
+ * Empty and whitespace-only values do not abort. The pointer is
+ * a sanitized copy (no controls, bounded) valid until the next call.
+ */
+char	*session_abort_text(void);
 void	flexecute(flist_t *);
 void	addflist(flist_t **, char *, char *, char, off_t, FILE *, int);
 void	simulate_send(ftnaddr_t *);

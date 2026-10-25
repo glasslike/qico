@@ -64,16 +64,17 @@ typedef struct {
 } cfgstr_t;
 
 /*
- * configtab[].flags: low two bits are static (from qconf.x), the rest are
- * set while parsing. killconfig() must keep the static bits — wiping them
- * made every reload forget which keywords are required, so a missing
- * `address' passed readconfig() and then SIGSEGV'd on cfgal()->addr.
+ * configtab[].flags: static bits come from qconf.x and must survive
+ * killconfig(). Wiping them made every reload forget which keywords
+ * are required, so a missing `address' passed readconfig() and then
+ * SIGSEGV'd on cfgal()->addr. The seen bits are parse-time only.
  */
 #define CFG_F_REQUIRED	0x01	/* must appear at top level */
 #define CFG_F_NOIF	0x02	/* cannot be used inside if-expression */
 #define CFG_F_SEEN_IF	0x04	/* runtime: seen inside an if-expression */
 #define CFG_F_SEEN	0x08	/* runtime: seen at top level */
-#define CFG_F_STATIC	(CFG_F_REQUIRED | CFG_F_NOIF)
+#define CFG_F_IFONLY	0x10	/* rejected at top level; only inside if */
+#define CFG_F_STATIC	(CFG_F_REQUIRED | CFG_F_NOIF | CFG_F_IFONLY)
 
 extern	char *sigs[];
 
@@ -129,6 +130,10 @@ extern	void (*log_callback)(const char *str);
 int	log_init(const char *, const char *);
 void	vwrite_log(const char *, int);
 void	write_log(const char *, ...);
+/* Remember write_log() lines while a config is being read, then
+ * append that copy to masterlog if the read fails. See log.c. */
+void	log_config_errors(int);
+void	log_config_errors_flush(const char *);
 
 #ifdef NEED_DEBUG
 extern	int facilities_levels[256];

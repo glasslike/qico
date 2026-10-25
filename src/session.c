@@ -519,11 +519,63 @@ void log_rinfo(ninfo_t *e)
         outbound_locknode( &pp->addr, LCK_s );
 
 
+/*
+ * abortsession, read at handshake end.
+ *
+ * The value is the M_ERR text (Binkp) and the log line (both
+ * protocols). NULL, empty, or only controls/whitespace means the
+ * session goes ahead. Controls are dropped so a reason cannot break
+ * a Binkp frame. The copy lives in a static buffer until the next
+ * call of this function. cfgs() does not overwrite it. qico runs
+ * one session per process.
+ *
+ * Evaluated when the caller has already filled rnode->addrs and the
+ * password and listed bits. An `if' on this keyword then sees the
+ * same address, protected and listed state as maxsession.
+ * The keyword is CFG_F_IFONLY: parsekeyword() rejects a top-level
+ * line, so a config that would abort every session does not load.
+ * No matching `if' leaves the unconditional slot empty and this
+ * returns NULL.
+ */
+char *session_abort_text(void)
+{
+	static char buf[256];
+	const char *s, *p;
+	char *out;
+	int n;
+	unsigned char c;
+
+	s = cfgs( CFG_ABORTSESSION );
+	if ( !s )
+		return NULL;
+
+	while ( *s == ' ' || *s == '\t' )
+		s++;
+
+	out = buf;
+	n = 0;
+	for ( p = s; *p && n < (int) sizeof( buf ) - 1; p++ ) {
+		c = (unsigned char) *p;
+		if ( c < 32 || c == 127 )
+			continue;
+		*out++ = (char) c;
+		n++;
+	}
+	while ( out > buf && ( out[-1] == ' ' || out[-1] == '\t' ))
+		out--;
+	*out = '\0';
+
+	if ( !buf[0] )
+		return NULL;
+	return buf;
+}
+
+
 static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
 {
     int rc, proto, xproto;
     unsigned long nfiles;
-    char *t, *x, pr[3], s[MAX_STRING];
+    char *t, *x, *why = NULL, pr[3], s[MAX_STRING];
     falist_t *pp = NULL;
     qitem_t *q = NULL;
     
@@ -585,7 +637,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         if ( rnode->pwd && strlen( rnode->pwd ))
             rnode->options |= O_PWD;
 
-        if ( nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+        if ( addrs_listed( rnode->addrs ))
             rnode->options |= O_LST;
 
     } else {
@@ -671,7 +723,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
             flkill( &fl, 0 );
 	}
 
-        if ( nodelist_listed( rnode->addrs, cfgi( CFG_NEEDALLLISTED )))
+        if ( addrs_listed( rnode->addrs ))
             rnode->options |= O_LST;
 
         pr[2] = 0; pr[1] = 0; pr[0] = 0;
@@ -679,6 +731,15 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         if ( rc ) {                          /* Bad password - abort session */
             emsi_lo |= O_BAD;
             rnode->options |= O_BAD;
+        } else if (( why = session_abort_text() )) {
+            /*
+             * Leave pr empty. emsi_send below then offers no
+             * protocol (P_NCP) instead of agreeing to one and
+             * hanging up after the peer has started it. The
+             * return after this branch sends that DAT and stops
+             * before any file. Outbound EMSI cannot do this: our
+             * DAT was sent before the remote address was known.
+             */
         } else {
 
             xproto = is_freq_available();
@@ -763,6 +824,27 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
             flkill( &fl, 0 );
             return S_REDIAL | S_ADDTRY;
         }
+    }
+
+    /*
+     * Address, password and listed are set in both branches above.
+     * Stop before runonemsi, the session timer and any file protocol.
+     * Outbound returns S_BUSY, not S_REDIAL: failpolls would queue
+     * another call only to refuse it again. Not S_FAILURE either:
+     * the caller child would mark the node undialable until
+     * clearundial, which outlives a time-window condition. Mail
+     * stays where it is and is tried on a later scan.
+     * Inbound S_FAILURE is the answering process only. It does not
+     * mark the node undialable.
+     */
+    if ( !why )
+        why = session_abort_text();
+    if ( why ) {
+        write_log( "session aborted: %s", why );
+        binlog_set_result( "aborted" );
+        rnode->starttime = time( NULL );
+        flkill( &fl, 0 );
+        return originator ? S_BUSY : S_FAILURE;
     }
 
     if ( cfgs( CFG_RUNONEMSI ) && *ccs ) {

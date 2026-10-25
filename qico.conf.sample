@@ -147,7 +147,7 @@ $binz		/usr/bin
 # your addresses, first will be used as primary and its zone and net will be
 # used as default (required).
 ;address	1:2345/7845
-;address 	111:222/44@leftnet
+;address 	111:222/44@othernet
 
 # default FTN domain for 5D addresses (not the internet DNS suffix)
 domain		fidonet
@@ -251,6 +251,31 @@ nodelist	nodelist.999
 # Check for `listed' all addresses of remote or only one (any).
 needalllisted	no
 
+# Where a presented address counts as listed (`if listed', FREQ
+# SystemStatus, /LST in the log). This is not the protected flag:
+# a password of "-" is still a declaration, and `if protected'
+# stays the password check.
+#
+#   in_nodelist  the compiled nodelist only. Default, same as before
+#                this keyword existed. No nodelist, or an index that
+#                cannot be opened: nobody is listed. The index is not
+#                compiled just for this check.
+#   in_configs   declared in this config: a `password' line or a
+#                `subst' line for that exact z:n/f.p. A boss line
+#                does not cover a point. filebox and share do not
+#                count. The nodelist is not opened, so this still
+#                works when no list is configured.
+#   in_either    listed when either source matches. A missing or
+#                unconfigured nodelist does not hide a config hit
+#                and does not start a compile.
+#
+# needalllisted applies on top of that test. EMSI always uses this.
+# BinkP uses it too, unless binkplisted is set to no. The value is
+# read once, before the listed flag is set: `if listed' cannot
+# choose listedfrom for that check. tcp,
+# inbound and protected already can.
+listedfrom	in_nodelist
+
 # ASO and/or BSO outbound path
 #
 # (required)(nonif)
@@ -281,7 +306,7 @@ qstoutbound	$(spool)/qstoutb
 # unprotected inbound
 #
 # (required)
-inbound		$(spool)/inbound/unknown
+inbound		$(spool)/inbound/unprotected
 
 # protected inbound (you can add also listed, personal and other inbounds)
 if protected | outbound
@@ -292,14 +317,19 @@ endif
 # if <nodial>.tcpip file exists we won't "call" via tcp/ip.
 nodial		/etc/nodial
 
-# history file
-history		$(logz)/history
+# Native CSV-like session history file.
+# Optional. Independent of `binlog'.
+;history	$(logz)/history
 
-# Binary session log, T-Hist format version 3 (five-byte HIST
-# signature, then length-prefixed records with a CRC-32). Independent of
-# `history': either file, both, or neither. This path must not
-# be the text history file. Omit the keyword to disable.
-;binlog		$(logz)/qico-binlog
+# Binary session log, T-Hist format version 3:
+# https://github.com/klug378/T-Hist/blob/main/FORMATS.md
+# Independent of `history'. Optional for qcc: when built with
+# binlog support, qcc shows today's sessions from this file and
+# picks up new ones as they are appended.
+# (run qcc -B <binlog-path>, and l/L on the master window).
+# This path must not be the text history file.
+# Omit the keyword to disable.
+binlog		$(logz)/qico-binlog
 
 # personal fileboxes
 ;filebox 	1:2345/999	$(spool)/fbox/uplink
@@ -516,6 +546,7 @@ flags		qico team
 ;progname	qico
 ;version	2000
 ;osname		Windows95
+
 # Which uname() fields go into the auto-detected OS ident (the global
 # osname). Token order does not matter. Default is all three, producing
 # sysname-release (machine), e.g. Linux-6.1.0-18-amd64 (x86_64).
@@ -583,11 +614,12 @@ protorder	HJDZ1C
 # T - Chat enable
 binkpopt	MRBCT
 
-# Apply nodelist `listed' check on BinkP sessions (default no).
-# EMSI always does this; BinkP historically did not. When yes, O_LST is
-# set using needalllisted, so `if listed', FREQ listed status and /LST
-# in the options log work the same as on EMSI.
-;binkplisted	yes
+# Apply the `listed' check on BinkP sessions (default yes).
+# EMSI always does this. BinkP used to skip it; `binkplisted no'
+# restores that. When yes, O_LST is set from `listedfrom' and
+# needalllisted, so `if listed', FREQ listed status and /LST in
+# the options log work the same as on EMSI.
+;binkplisted	no
 
 # HTTP(S) proxy.
 # format: proxy host[:port] [login [password]]
@@ -847,6 +879,13 @@ aftermail  $(binz)/toss
 
 # Binkp without session timeout
 ;if binkp: maxsession 0
+
+# refuse the session after the handshake, before any file.
+# abortsession is legal only inside if, and a reason is required.
+# the reason is the rest of the line: one word, or several words
+# separated by spaces.
+#   if <condition> : abortsession <reason text>
+;if address 2:203/910.1 : abortsession session refused
 
 # only send, if free space less 1Mb
 ;if sfree < 1024 $(spool)
