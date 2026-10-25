@@ -1,5 +1,5 @@
-Version 0.60.3-dev
-~~~~~~~~~~~~~~~~~~
+Version 0.60.3
+~~~~~~~~~~~~~~
 - fix config parser: a keyword with no value is empty.
   It used to take the tail of the previous line.
 - config errors are appended to `masterlog` when the read fails and
