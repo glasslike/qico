@@ -59,6 +59,10 @@ static int day_yday;
 static int day_year;
 static int list_mh;
 static WINDOW *whist;
+/* List limits. Cleared when the file itself changes, not on a redraw. */
+static int hide_zero;
+static int failed_only;
+static int help_on;
 static char title_buf[80];
 static char status_buf[BL_TEXT_LEN + 8];
 static char errbuf[160];
@@ -672,6 +676,15 @@ static int load_day(time_t now)
 }
 
 
+/* The limits describe one snapshot. A changed file is a new snapshot. */
+static void clear_limits(void)
+{
+	hide_zero = 0;
+	failed_only = 0;
+	help_on = 0;
+}
+
+
 static int catch_up(time_t now)
 {
 	int fd, yday, year, n = 0, follow, i;
@@ -683,6 +696,7 @@ static int catch_up(time_t now)
 	if ( yday != day_yday || year != day_year ) {
 		if ( load_day( now ) < 0 )
 			return ready ? 0 : -1;
+		clear_limits();
 		return 1;
 	}
 	if ( open_log( &fd, &size ) < 0 )
@@ -703,6 +717,7 @@ static int catch_up(time_t now)
 			close( fd );
 		if ( load_day( now ) < 0 )
 			return -1;
+		clear_limits();
 		return 1;
 	}
 	tail = good_tail( fd, size );
@@ -745,6 +760,8 @@ static int catch_up(time_t now)
 		cursor = nrecs - 1;
 	measure_addrs();
 	sync_caption();
+	if ( n > 0 )
+		clear_limits();
 	return n > 0;
 }
 
@@ -822,6 +839,7 @@ const char *hist_toggle(int mh)
 	list_mh = mh;
 	if ( on ) {
 		on = 0;
+		help_on = 0;
 		if ( whist ) {
 			delwin( whist );
 			whist = NULL;
@@ -866,61 +884,189 @@ int hist_poll(time_t now)
 }
 
 
-void hist_key(int ch, int body)
+/*
+ * A listed row. Zero traffic is neither direction carrying bytes.
+ * Failed is the same test as the red A in the list: not BL_OK.
+ * With both limits on, a row has to satisfy each of them.
+ */
+static int row_shown(int i)
 {
-	int page;
+	const bl_sess_t *s;
 
-	if ( body < 1 )
-		body = 1;
-	page = body > 1 ? body - 1 : 1;
+	if ( i < 0 || i >= nrecs )
+		return 0;
+	s = &recs[i];
+	if ( hide_zero && s->bytes_rcvd == 0 && s->bytes_sent == 0 )
+		return 0;
+	if ( failed_only && ( s->status & BL_OK ))
+		return 0;
+	return 1;
+}
+
+
+static int vis_count(void)
+{
+	int i, n = 0;
+
+	for ( i = 0; i < nrecs; i++ )
+		if ( row_shown( i ))
+			n++;
+	return n;
+}
+
+
+/* Visible-row number of a record, or -1 when that record is hidden. */
+static int vis_pos(int rec)
+{
+	int i, v = 0;
+
+	for ( i = 0; i < nrecs; i++ ) {
+		if ( !row_shown( i ))
+			continue;
+		if ( i == rec )
+			return v;
+		v++;
+	}
+	return -1;
+}
+
+
+/* Record index of visible row v, or -1 past the last shown row. */
+static int rec_at_vis(int v)
+{
+	int i, n = 0;
+
+	if ( v < 0 )
+		return -1;
+	for ( i = 0; i < nrecs; i++ ) {
+		if ( !row_shown( i ))
+			continue;
+		if ( n == v )
+			return i;
+		n++;
+	}
+	return -1;
+}
+
+
+/* Keep the cursor on a shown row: the same one, else the nearest. */
+static void snap_cursor(void)
+{
+	int i;
+
 	if ( nrecs <= 0 ) {
 		cursor = 0;
 		top = 0;
 		return;
 	}
+	if ( row_shown( cursor ))
+		return;
+	for ( i = cursor + 1; i < nrecs; i++ )
+		if ( row_shown( i )) {
+			cursor = i;
+			return;
+		}
+	for ( i = cursor - 1; i >= 0; i-- )
+		if ( row_shown( i )) {
+			cursor = i;
+			return;
+		}
+	cursor = 0;
+	top = 0;
+}
+
+
+void hist_toggle_zeroes(void)
+{
+	hide_zero = !hide_zero;
+	help_on = 0;
+	snap_cursor();
+	sync_caption();
+}
+
+
+void hist_toggle_failed(void)
+{
+	failed_only = !failed_only;
+	help_on = 0;
+	snap_cursor();
+	sync_caption();
+}
+
+
+void hist_toggle_help(void)
+{
+	help_on = !help_on;
+}
+
+
+void hist_key(int ch, int body)
+{
+	int page, v, nvis;
+
+	help_on = 0;
+	if ( body < 1 )
+		body = 1;
+	page = body > 1 ? body - 1 : 1;
+	nvis = vis_count();
+	if ( nvis <= 0 ) {
+		cursor = 0;
+		top = 0;
+		sync_caption();
+		return;
+	}
+	snap_cursor();
+	v = vis_pos( cursor );
+	if ( v < 0 )
+		v = 0;
 	switch ( ch ) {
 	case KEY_UP:
-		if ( cursor > 0 )
-			cursor--;
+		if ( v > 0 )
+			v--;
 		break;
 	case KEY_DOWN:
-		if ( cursor + 1 < nrecs )
-			cursor++;
+		if ( v + 1 < nvis )
+			v++;
 		break;
 	case KEY_PPAGE:
-		cursor -= page;
-		if ( cursor < 0 )
-			cursor = 0;
+		v -= page;
+		if ( v < 0 )
+			v = 0;
 		break;
 	case KEY_NPAGE:
-		cursor += page;
-		if ( cursor >= nrecs )
-			cursor = nrecs - 1;
+		v += page;
+		if ( v >= nvis )
+			v = nvis - 1;
 		break;
 	default:
 		break;
 	}
+	cursor = rec_at_vis( v );
+	if ( cursor < 0 )
+		cursor = 0;
 	sync_caption();
 }
 
 
 static void place_cursor(int body)
 {
+	int v, nvis;
+
 	if ( body < 1 )
 		body = 1;
-	if ( nrecs <= 0 ) {
-		cursor = 0;
+	nvis = vis_count();
+	if ( nvis <= 0 ) {
 		top = 0;
 		return;
 	}
-	if ( cursor < 0 )
-		cursor = 0;
-	if ( cursor >= nrecs )
-		cursor = nrecs - 1;
-	if ( top > cursor )
-		top = cursor;
-	if ( cursor >= top + body )
-		top = cursor - body + 1;
+	snap_cursor();
+	v = vis_pos( cursor );
+	if ( v < 0 )
+		v = 0;
+	if ( top > v )
+		top = v;
+	if ( v >= top + body )
+		top = v - body + 1;
 	if ( top < 0 )
 		top = 0;
 }
@@ -937,8 +1083,20 @@ void hist_hide_list(void)
 
 void hist_draw_list(void)
 {
-	int h, w, body, row, y;
+	int h, w, body, row, y, nvis;
 	char line[2048];
+	static const char *help_lines[] = {
+		"Session log",
+		"  L/l        leave this screen",
+		"  Up/Down    previous or next session",
+		"  PgUp/PgDn  page",
+		"  Z/z        Hide zeroes (no bytes either way)",
+		"  F/f        Failed only",
+		"  F1         this help",
+		"  Q/q        quit",
+		"  Z and F stay until the binlog file changes",
+		NULL
+	};
 
 	ensure_window();
 	if ( !whist )
@@ -947,14 +1105,24 @@ void hist_draw_list(void)
 	werase( whist );
 	if ( w > (int) sizeof( line ) - 1 )
 		w = (int) sizeof( line ) - 1;
+	if ( help_on ) {
+		for ( y = 0; y < h && help_lines[y]; y++ ) {
+			wattrset( whist, y ? COLOR_PAIR( 7 ) : ( COLOR_PAIR( 6 ) | A_BOLD ));
+			mvwaddnstr( whist, y, 0, help_lines[y], w );
+		}
+		wrefresh( whist );
+		return;
+	}
 	build_line( line, (int) sizeof( line ), w, NULL );
 	wattrset( whist, COLOR_PAIR( 6 ) | A_BOLD );
 	mvwaddnstr( whist, 0, 0, line, w );
 	body = h - 1;
 	place_cursor( body );
-	if ( nrecs <= 0 ) {
+	nvis = vis_count();
+	if ( nrecs <= 0 || nvis <= 0 ) {
 		wattrset( whist, COLOR_PAIR( 7 ));
-		mvwaddnstr( whist, h > 1 ? 1 : 0, 0, "No sessions today", w );
+		mvwaddnstr( whist, h > 1 ? 1 : 0, 0,
+			nrecs <= 0 ? "No sessions today" : "No matching sessions", w );
 		wrefresh( whist );
 		return;
 	}
@@ -965,10 +1133,15 @@ void hist_draw_list(void)
 		(void) info_w;
 		ax = 11 + gap1 + 3;
 		addr_x = 11 + gap1 + 4 + gap2;
-		for ( row = 0, y = 1; y < h && top + row < nrecs; y++, row++ ) {
-			int cur = ( top + row == cursor );
-			const bl_sess_t *s = &recs[top + row];
+		for ( row = 0, y = 1; y < h; y++, row++ ) {
+			int idx = rec_at_vis( top + row );
+			int cur;
+			const bl_sess_t *s;
 
+			if ( idx < 0 )
+				break;
+			cur = ( idx == cursor );
+			s = &recs[idx];
 			build_line( line, (int) sizeof( line ), w, s );
 			wattrset( whist, cur ? COLOR_PAIR( 16 ) : COLOR_PAIR( 7 ));
 			mvwaddnstr( whist, y, 0, line, w );
@@ -1044,9 +1217,11 @@ void hist_draw_card(WINDOW *wmain)
 	getmaxyx( wmain, h, ww );
 	edge = ww > 0 ? ww - 1 : 0;
 	werase( wmain );
-	if ( nrecs <= 0 || cursor < 0 || cursor >= nrecs ) {
+	if ( nrecs <= 0 || cursor < 0 || cursor >= nrecs || !row_shown( cursor )) {
 		wattrset( wmain, COLOR_PAIR( 3 ));
-		mvwaddnstr( wmain, 0, 1, "No sessions today", ww > 2 ? ww - 2 : ww );
+		mvwaddnstr( wmain, 0, 1,
+			nrecs <= 0 ? "No sessions today" : "No matching sessions",
+			ww > 2 ? ww - 2 : ww );
 		return;
 	}
 	s = &recs[cursor];

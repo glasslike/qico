@@ -227,6 +227,8 @@ NULL
 /* Shown only while the history view is up. The master hint has no room. */
 static char *hh[]={
 	"L","eave, ",
+	"Z","eroes, ",
+	"F","ailed only, ",
 	"Up","/","Dn",", ",
 	"PgUp","/","PgDn",", ",
 	"Q","uit",
@@ -1794,7 +1796,15 @@ int main(int argc, char **argv, char **envp)
 				freshall();
 			}
 		} else if(ch==KEY_F(10))quitflag=1;
-		    else if(ch==KEY_F(1)){for(ch=0;help[ch];ch++)write_log(help[ch],version);}
+		    else if(ch==KEY_F(1)){
+#ifdef WITH_QCC_BINLOG
+			if ( currslot < 0 && hist_on() ) {
+				hist_toggle_help();
+				freshall();
+			} else
+#endif
+			{for(ch=0;help[ch];ch++)write_log(help[ch],version);}
+		    }
 			else if(ch>0&&(unsigned char)ch<255&&currslot>0&&slots[currslot]->chat) {
 				if(ch!=KEY_F(2)) {
 					if(ch==KEY_BACKSPACE||ch==127)ch='\b';
@@ -1955,7 +1965,22 @@ int main(int argc, char **argv, char **envp)
 					xcmd(buf,QR_KILL,strlen(buf+3)+4);
 				}
 				break;
+			case 'z': case 'Z':
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_toggle_zeroes();
+					freshall();
+				}
+#endif
+				break;
 			case 'f': case 'F':
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_toggle_failed();
+					freshall();
+					break;
+				}
+#endif
 				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='F')break;
 				printinfo(ch=='F'?que->addr:getnode("Get info about address: "),ch=='f',buf);
 				break;

@@ -34,6 +34,18 @@ int		hist_poll(time_t now);
 /* Queue-style motion. body is the number of session rows on screen. */
 void		hist_key(int ch, int body);
 
+/*
+ * List limits. Each one toggles. Both drop on the next accepted
+ * change of the file (a new frame, a shorter file, or a new day).
+ * Hide zeroes skips sessions with no bytes either way. Failed only
+ * keeps sessions that did not finish cleanly. A row has to pass both.
+ */
+void		hist_toggle_zeroes(void);
+void		hist_toggle_failed(void);
+
+/* Show or hide the session-log key help in the list pane. */
+void		hist_toggle_help(void);
+
 void		hist_draw_card(WINDOW *wmain);
 void		hist_draw_list(void);
 
