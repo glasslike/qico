@@ -147,7 +147,7 @@ $binz		/usr/bin
 # your addresses, first will be used as primary and its zone and net will be
 # used as default (required).
 ;address	1:2345/7845
-;address 	111:222/44@leftnet
+;address 	111:222/44@othernet
 
 # default FTN domain for 5D addresses (not the internet DNS suffix)
 domain		fidonet
@@ -306,7 +306,7 @@ qstoutbound	$(spool)/qstoutb
 # unprotected inbound
 #
 # (required)
-inbound		$(spool)/inbound/unknown
+inbound		$(spool)/inbound/unprotected
 
 # protected inbound (you can add also listed, personal and other inbounds)
 if protected | outbound
@@ -317,14 +317,19 @@ endif
 # if <nodial>.tcpip file exists we won't "call" via tcp/ip.
 nodial		/etc/nodial
 
-# history file
-history		$(logz)/history
+# Native CSV-like session history file.
+# Optional. Independent of `binlog'.
+;history	$(logz)/history
 
-# Binary session log, T-Hist format version 3 (five-byte HIST
-# signature, then length-prefixed records with a CRC-32). Independent of
-# `history': either file, both, or neither. This path must not
-# be the text history file. Omit the keyword to disable.
-;binlog		$(logz)/qico-binlog
+# Binary session log, T-Hist format version 3:
+# https://github.com/klug378/T-Hist/blob/main/FORMATS.md
+# Independent of `history'. Optional for qcc: when built with
+# binlog support, qcc shows today's sessions from this file and
+# picks up new ones as they are appended.
+# (run qcc -B <binlog-path>, and l/L on the master window).
+# This path must not be the text history file.
+# Omit the keyword to disable.
+binlog		$(logz)/qico-binlog
 
 # personal fileboxes
 ;filebox 	1:2345/999	$(spool)/fbox/uplink
@@ -541,6 +546,7 @@ flags		qico team
 ;progname	qico
 ;version	2000
 ;osname		Windows95
+
 # Which uname() fields go into the auto-detected OS ident (the global
 # osname). Token order does not matter. Default is all three, producing
 # sysname-release (machine), e.g. Linux-6.1.0-18-amd64 (x86_64).
@@ -613,7 +619,7 @@ binkpopt	MRBCT
 # restores that. When yes, O_LST is set from `listedfrom' and
 # needalllisted, so `if listed', FREQ listed status and /LST in
 # the options log work the same as on EMSI.
-binkplisted	yes
+;binkplisted	no
 
 # HTTP(S) proxy.
 # format: proxy host[:port] [login [password]]
@@ -878,9 +884,7 @@ aftermail  $(binz)/toss
 # abortsession is legal only inside if, and a reason is required.
 # the reason is the rest of the line: one word, or several words
 # separated by spaces.
-#
 #   if <condition> : abortsession <reason text>
-#
 ;if address 2:203/910.1 : abortsession session refused
 
 # only send, if free space less 1Mb
