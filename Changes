@@ -2,7 +2,9 @@ Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
 - qcc session log: Z/z hides sessions with no traffic, F/f shows
   failed ones only. Both last until the binlog file changes.
-  F1 on that screen lists its keys.
+  F1 on that screen lists its keys, in the same style as the main help,
+  and F1 is the first hint there.
+- qcc help banner is "* qico control center <version> keys:".
 
 
 Version 0.60.3

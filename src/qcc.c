@@ -226,6 +226,7 @@ NULL
 #ifdef WITH_QCC_BINLOG
 /* Shown only while the history view is up. The master hint has no room. */
 static char *hh[]={
+	"F1",", ",
 	"L","eave, ",
 	"Z","eroes, ",
 	"F","ailed only, ",
@@ -237,7 +238,7 @@ NULL
 #endif
 
 static char *help[]={
-	"\01* qico control center %s, sisoft\\\\trg edition. help about keys:",
+	"\01* qico control center %s keys:",
 	"\01 All windows: F10 - quit, Tab/Right - next and Left - previous window",
 	"\01 Main window:                  Line window:                Chat window:",
 	"\01  F1 - help,  q - quit          q - quit,  p - poll         Esc - close chat",

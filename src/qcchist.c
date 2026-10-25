@@ -1086,15 +1086,15 @@ void hist_draw_list(void)
 	int h, w, body, row, y, nvis;
 	char line[2048];
 	static const char *help_lines[] = {
-		"Session log",
+		"Sessions list based on daemons binlog",
 		"  L/l        leave this screen",
-		"  Up/Down    previous or next session",
-		"  PgUp/PgDn  page",
-		"  Z/z        Hide zeroes (no bytes either way)",
-		"  F/f        Failed only",
-		"  F1         this help",
+		"  Up/Down    previous/next session",
+		"  PgUp/PgDn  pages",
+		"  Z/z        hide zeros (no bytes either way)",
+		"  F/f        failed only sessions",
 		"  Q/q        quit",
-		"  Z and F stay until the binlog file changes",
+		"",
+		"  Z, F stay until the binlog file changes",
 		NULL
 	};
 
@@ -1107,7 +1107,7 @@ void hist_draw_list(void)
 		w = (int) sizeof( line ) - 1;
 	if ( help_on ) {
 		for ( y = 0; y < h && help_lines[y]; y++ ) {
-			wattrset( whist, y ? COLOR_PAIR( 7 ) : ( COLOR_PAIR( 6 ) | A_BOLD ));
+			wattrset( whist, COLOR_PAIR( 7 ) | A_BOLD );
 			mvwaddnstr( whist, y, 0, help_lines[y], w );
 		}
 		wrefresh( whist );
