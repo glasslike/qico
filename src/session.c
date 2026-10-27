@@ -840,8 +840,8 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
     if ( !why )
         why = session_abort_text();
     if ( why ) {
-        write_log( "session aborted: %s", why );
-        binlog_set_result( "aborted" );
+        write_log( "session refused by abortsession: %s", why );
+        binlog_set_result( "refused by abortsession" );
         rnode->starttime = time( NULL );
         flkill( &fl, 0 );
         return originator ? S_BUSY : S_FAILURE;

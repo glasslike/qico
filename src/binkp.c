@@ -775,8 +775,8 @@ static int M_adr(BPS *bp, byte *arg)
 static void binkp_abort(BPS *bp, const char *why)
 {
 	log_rinfo( rnode );
-	write_log( "session aborted: %s", why );
-	binlog_set_result( "aborted" );
+	write_log( "session refused by abortsession: %s", why );
+	binlog_set_result( "refused by abortsession" );
 	rnode->starttime = time( NULL );
 	msgs( BPM_ERR, "%s", why );
 	bp->rc = bp->to ? S_BUSY : S_FAILURE;
