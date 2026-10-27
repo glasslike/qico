@@ -715,6 +715,8 @@ static void freshhelp(void)
 		}
 	}
 	wattron(whelp,COLOR_PAIR(10));
+	/* Package version only. The dev commit is version_id, used by -v
+	 * and by the mailer when it talks to the other node, not here. */
 	mvwprintw(whelp,0,COL-4-strlen(version),"qcc-%s",version);
 }
 

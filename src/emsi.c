@@ -596,7 +596,7 @@ static void emsi_banner(void)
 
 	snprintf( banner, MAX_STRING, "+ Address %s using %s v%s [%s]",
 		addr->d ? ftnaddrtoda( addr ) : ftnaddrtoa( addr ),
-		progname, version, cvsdate );
+		progname, version_id, cvsdate );
 
 	sline( "Sending EMSI_REQ..." );
 	DEBUG(('E',1,"EI: Sending EMSI_REQ"));

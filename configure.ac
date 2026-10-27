@@ -721,6 +721,55 @@ AC_DEFINE_UNQUOTED([QICO_SOURCE_DATE], ["$QICO_SOURCE_DATE"],
 	[UTC git-commit (or dist) stamp printed by qico -v and in EMSI banners])
 AC_SUBST([QICO_SOURCE_DATE])
 
+dnl Commit abbreviation for a -dev build. Seven hex digits is the length
+dnl git uses for a small repository. --short=7 still prints more when
+dnl those seven are not unique, and that longer prefix is kept.
+dnl Appended only when PACKAGE_VERSION ends in -dev, as -g<id>, so the
+dnl session ident and -v read 0.60.4-dev-g0123456. A release version is
+dnl unchanged. qcc's screen prints PACKAGE_VERSION and does not use this.
+dnl Same sources as the date: git when this is a checkout, else
+dnl src/source-commit from "make dist", else no suffix.
+AC_MSG_CHECKING([source commit])
+QICO_GIT_ABBREV=
+if test -d "$srcdir/.git" || test -f "$srcdir/.git"; then
+	if (cd "$srcdir" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
+		QICO_GIT_ABBREV=`cd "$srcdir" && git rev-parse --short=7 HEAD 2>/dev/null`
+	fi
+fi
+if test -z "$QICO_GIT_ABBREV" && test -f "$srcdir/src/source-commit"; then
+	QICO_GIT_ABBREV=`tr -d '\r\n' < "$srcdir/src/source-commit"`
+fi
+dnl Anything other than hex would be unsafe in the C string, and fewer
+dnl than seven digits is not the abbreviation this build records.
+dnl Brackets are doubled: m4 would otherwise treat them as quotes.
+dnl First arm drops a value that is not pure hex. Second keeps seven
+dnl or more hex digits. Anything shorter is dropped by the last arm.
+case "$QICO_GIT_ABBREV" in
+	*[[!0-9a-f]]*)
+		QICO_GIT_ABBREV=
+		;;
+	[[0-9a-f]][[0-9a-f]][[0-9a-f]][[0-9a-f]][[0-9a-f]][[0-9a-f]][[0-9a-f]]*)
+		;;
+	*)
+		QICO_GIT_ABBREV=
+		;;
+esac
+QICO_VERSION_ID=$PACKAGE_VERSION
+case "$PACKAGE_VERSION" in
+	*-dev)
+		if test -n "$QICO_GIT_ABBREV"; then
+			QICO_VERSION_ID="${PACKAGE_VERSION}-g${QICO_GIT_ABBREV}"
+		fi
+		;;
+esac
+case "$QICO_VERSION_ID" in
+	*[[\"\\]]*) QICO_VERSION_ID=$PACKAGE_VERSION ;;
+esac
+AC_MSG_RESULT([$QICO_VERSION_ID])
+AC_DEFINE_UNQUOTED([QICO_VERSION_ID], ["$QICO_VERSION_ID"],
+	[Package version, with -g and the git abbreviation on a -dev build])
+AC_SUBST([QICO_GIT_ABBREV])
+
 
 dnl add warn flags in maintainer mode
 dnl -fcommon: required for GCC 10+ / Debian 12+ where -fno-common is the

@@ -45,7 +45,17 @@
 
 
 char *osname = "Unix";
+/* Plain package version. qcc prints this in its window. A dev commit
+ * belongs in version_id, so the screen does not change every build. */
 char version[] = PACKAGE_VERSION;
+
+/* Session ident and the -v line. QICO_VERSION_ID is PACKAGE_VERSION, or
+ * PACKAGE_VERSION-g<abbrev> when configure.ac saw a -dev version and a
+ * git commit. An old config.h without the define keeps the plain version. */
+#ifndef QICO_VERSION_ID
+#define QICO_VERSION_ID PACKAGE_VERSION
+#endif
+char version_id[] = QICO_VERSION_ID;
 
 /* Ident in qico -v and the EMSI banner brackets. QICO_SOURCE_DATE is the
  * UTC git-commit stamp baked by ./configure (see configure.ac), not
@@ -743,7 +753,7 @@ void u_vers(const char *progn)
 {
 	struct utsname uts;
 
-	printf( "%s v%s [%s]\n", progn, version, cvsdate );
+	printf( "%s v%s [%s]\n", progn, version_id, cvsdate );
     
 	if( !uname( &uts ))
 		printf( "%s %s (%s), ", uts.sysname, uts.release, uts.machine );

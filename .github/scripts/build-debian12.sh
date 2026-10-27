@@ -89,7 +89,9 @@ if [ -z "$version" ]; then
 	exit 1
 fi
 
-sha="$(git rev-parse --short=12 HEAD)"
+# Seven hex digits, the same abbreviation a -dev version uses after -g.
+# The zip name has no g: qico-0.60.4-dev-debian12-amd64-a9d086b.zip.
+sha="$(git rev-parse --short=7 HEAD)"
 when="$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M')"
 arch="$(dpkg --print-architecture)"
 name="qico-${version}-debian12-${arch}-${sha}"

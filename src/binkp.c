@@ -1701,7 +1701,7 @@ static void binkp_hs(BPS *bp)
 		tm->tm_hour, tm->tm_min, tm->tm_sec,
 		negative ? '-' : '+', offset / 3600, offset % 3600 );
 
-	snprintf( tmp, 511 , "%s-%s/%s", progname, version, osname );
+	snprintf( tmp, 511 , "%s-%s/%s", progname, version_id, osname );
 	strtr( tmp, ' ', '-' );
 	msgs( BPM_NUL, "VER %s %s", tmp, BP_PROT "/" BP_VERSION );
 

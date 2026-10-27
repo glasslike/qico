@@ -283,7 +283,10 @@ char *qver(int w)
 		if ( ccs && strncasecmp( ccs, progname, 4 ))
 			if ( cfgs( CFG_VERSION ))
 				return ccs;
-		return version;
+		/* EMSI and the tear line. version_id carries the dev commit.
+		 * A configured version above still replaces it. The plain
+		 * version string is what the qcc screen shows. */
+		return version_id;
 
 	default:
 		return ( cfgs( CFG_OSNAME ) ? ccs : osname );

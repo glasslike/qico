@@ -41,7 +41,14 @@
 #define __QSLIB_H__
 
 extern	char progname[];
+/* Package version from AC_INIT, with no commit id. The qcc screen uses this. */
 extern	char version[];
+/*
+ * version plus, on a -dev build, "-g" and the git abbreviation baked by
+ * ./configure. qico -v, qcc -v, qctl -v, and the name sent to the other
+ * mailer use this. The qcc screen does not.
+ */
+extern	char version_id[];
 /* UTC source stamp from ./configure (git commit date, or make dist fallback). */
 extern	char cvsdate[];
 extern	char *osname;
