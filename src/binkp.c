@@ -997,6 +997,19 @@ static void binkp_abort(BPS *bp, const char *why)
 
 
 /*
+ * Set O_LST from listedfrom and needalllisted. Inbound calls this
+ * from M_pwd before abortsession. Outbound calls it from hsdone,
+ * which is the first point where the remote address list is final.
+ * binkplisted no skips the check, so BinkP stays unlisted.
+ */
+static void binkp_mark_listed(void)
+{
+	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
+		rnode->options |= O_LST;
+}
+
+
+/*
  * Completes binkp handshake
  */
 static int binkp_hsdone(BPS *bp)
@@ -1012,17 +1025,15 @@ static int binkp_hsdone(BPS *bp)
 		bp->opt_cr = O_NO;
 
 	/*
-	 * EMSI always runs addrs_listed() and may set O_LST. BinkP used
-	 * to skip that, so `if listed', FREQ listed-status and the "/LST"
-	 * bit in the options log stayed off. binkplisted now defaults to
-	 * yes: the same listedfrom and needalllisted rules as EMSI, after
-	 * ADR/PWD so rnode->addrs is complete. binkplisted no restores
-	 * the old "never listed on BinkP" behaviour. A missing index
-	 * still means "not in the nodelist" (the check does not compile
-	 * one). listedfrom in_configs does not open the index.
+	 * Inbound already set O_LST in M_pwd, before abortsession, so
+	 * `if listed' is visible while the M_ERR is still plaintext.
+	 * Outbound reaches here from M_OK and has not set it yet.
+	 * Setting the bit again is harmless. binkplisted no leaves it
+	 * clear, which is the old "BinkP is never listed" behaviour.
+	 * A missing index is "not in the nodelist" and is not compiled.
+	 * listedfrom in_configs does not open the index.
 	 */
-	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
-		rnode->options |= O_LST;
+	binkp_mark_listed();
 
 	/*
 	 * Inbound M_ERR is sent from M_pwd before this runs, in
@@ -1360,6 +1371,15 @@ static int M_pwd(BPS *bp, byte *arg)
 
 	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
+
+	/*
+	 * abortsession runs before hsdone, while M_ERR is still
+	 * plaintext. Addresses and the protected bit are already set.
+	 * Listed must be set here too: otherwise `if !listed' is true
+	 * for every inbound BinkP session and drops a node that the
+	 * outbound path, which marks listed in hsdone, would accept.
+	 */
+	binkp_mark_listed();
 
 	{
 		char *why = session_abort_text();
