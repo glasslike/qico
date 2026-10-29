@@ -2,10 +2,10 @@ Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
 - qcc session log: Z/z hides sessions with no traffic, F/f shows
   failed ones only. Both last until the binlog file changes.
-  F1 on that screen lists its keys, in the same style as the main help,
-  and F1 is the first hint there.
-- qcc help banner is "* qico control center <version> keys:".
-
+- binkp: a file time before 1970 no longer aborts the session.
+  The signed value and the unsigned spelling are the same time,
+  and the file keeps that date. A time through 2446-05-10 is
+  kept and sent in full.
 
 Version 0.60.3
 ~~~~~~~~~~~~~~

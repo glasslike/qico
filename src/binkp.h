@@ -128,7 +128,8 @@ struct _BP_SESSION {
     flist_t *oflist;		/* List of files to transmit */
     
     char *rfname;		/* Receiving file name */
-    time_t rmtime;		/* ... mtime */
+    char *rftime;		/* Time token echoed in M_GET/M_GOT/M_SKIP */
+    time_t rmtime;		/* Mtime stored on the received file */
 
     int ticskip;
     int nofiles;
