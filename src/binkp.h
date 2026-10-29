@@ -130,6 +130,8 @@ struct _BP_SESSION {
     char *rfname;		/* Receiving file name */
     char *rftime;		/* Time token echoed in M_GET/M_GOT/M_SKIP */
     time_t rmtime;		/* Mtime stored on the received file */
+    int rpt_cnt;		/* Consecutive offers of one name and size */
+    long rpt_size;		/* Size counted in rpt_cnt */
 
     int ticskip;
     int nofiles;

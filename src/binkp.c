@@ -1106,6 +1106,38 @@ static int binkp_hsdone(BPS *bp)
 
 
 /*
+ * A sender that cannot delete a file offers it again after every M_GOT.
+ * The third offer in a row of the same name and size drops the session.
+ * A normal transfer is one offer. NR mode sends M_FILE twice, so one
+ * further repeat ends it. A different name or size starts the count over.
+ */
+#define BINKP_REPEAT_MAX 3
+
+static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
+{
+	const char *base = qbasename( (char *) fname );
+
+	if ( bp->rfname && bp->rpt_size == fsize
+		&& !strncasecmp( base, bp->rfname, MAX_PATH ))
+		bp->rpt_cnt++;
+	else {
+		bp->rpt_cnt = 1;
+		bp->rpt_size = fsize;
+	}
+
+	if ( bp->rpt_cnt < BINKP_REPEAT_MAX )
+		return 1;
+
+	write_log( "Binkp: %s (%ld bytes) offered %d times in a row, session dropped",
+		base, fsize, bp->rpt_cnt );
+	binlog_set_result( "repeated file" );
+	msgs( BPM_ERR, "File offered too many times" );
+	bp->rc = S_FAILURE;
+	return 0;
+}
+
+
+/*
  * Process M_FILE command
  */
 static int M_file(BPS *bp, byte *arg)
@@ -1139,6 +1171,9 @@ static int M_file(BPS *bp, byte *arg)
 		bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
 		return 0;
 	}
+
+	if ( !binkp_repeat_limit( bp, fname, fsize ))
+		return 0;
 
 	/* wire is answered to the sender. local is stored on the file. */
 	wire = binkp_reply_time( time_tok, &local );
