@@ -382,6 +382,25 @@ static void binkp_put_time(char *dst, size_t n, time_t t)
 }
 
 
+/*
+ * FTS-1026 allows only zero or a positive unixtime. A date before
+ * 1970 is sent as 0, the same value on every retry, so a resumed
+ * transfer still matches. The file on disk is not rewritten.
+ */
+static void binkp_clip_send_time(void)
+{
+	char *path;
+
+	if ( sendf.mtime >= 0 )
+		return;
+
+	path = ( bps && bps->oflist ) ? bps->oflist->tosend : NULL;
+	write_log( "Binkp: %s timestamp is before 1970, sending 0",
+		path ? path : "file" );
+	sendf.mtime = 0;
+}
+
+
 /* Non-negative time that fits in time_t and on ext4. */
 static int binkp_time_keep_u(unsigned long long uv)
 {
@@ -2051,6 +2070,7 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 
 				bps->send_file = 1;
 				bps->txpos = ( bps->wait_for_get = ( bps->opt_nr & O_WE )) ? -1 : 0;
+				binkp_clip_send_time();
 				{
 					char tbuf[32];
 

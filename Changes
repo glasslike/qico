@@ -2,9 +2,8 @@ Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
 - qcc session log: Z/z hides sessions with no traffic, F/f shows
   failed ones only. Both last until the binlog file changes.
-- binkp: a file time before 1970 no longer aborts the session.
-  The signed value and the unsigned spelling are the same time,
-  and the file keeps that date. A time through 2446-05-10 is
+- fix binkp: a file time before 1970 no longer aborts the session.
+  The local file keeps its date. A time through 2446-05-10 is
   kept and sent in full.
 - binkp: the third offer in a row of the same file ends the session.
 
