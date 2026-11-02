@@ -194,11 +194,12 @@ The upper window shows the details of the session under the cursor.
 | `l` / `L` | leave the session log |
 | **Up / Down** | previous or next row that is still shown |
 | **PgUp / PgDn** | a page of shown rows |
+| `A` / `a` | show every session again. Clears both limits |
 | `Z` / `z` | hide sessions with no bytes either way. Press again to show them |
 | `F` / `f` | failed sessions only. Not nodelist info on this screen |
 | `q` | quit qcc |
 
-`Z` and `F` may both be on: failed sessions that moved some traffic. Either limit stays until `qcc` accepts a change in the file, which is a new session, a shorter file, or the next local day. Leaving the screen, or moving to a line, does not clear them. An unfinished tail does not clear them either. The status totals still count every loaded session, including hidden rows.
+The hint on this screen reads `All/Zeroes/Failed only`. `Z` and `F` may both be on: failed sessions that moved some traffic. Either limit stays until `A`, or until `qcc` accepts a change in the file, which is a new session, a shorter file, or the next local day. Leaving the screen, or moving to a line, does not clear them. An unfinished tail does not clear them either. The status totals still count every loaded session, including hidden rows.
 
 ## Line window
 

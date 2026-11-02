@@ -39,9 +39,12 @@ void		hist_key(int ch, int body);
  * change of the file (a new frame, a shorter file, or a new day).
  * Hide zeroes skips sessions with no bytes either way. Failed only
  * keeps sessions that did not finish cleanly. A row has to pass both.
+ * Show all, or turning the last limit off, returns the full list and
+ * selects the newest session.
  */
 void		hist_toggle_zeroes(void);
 void		hist_toggle_failed(void);
+void		hist_show_all(void);
 
 /* Show or hide the session-log key help in the list pane. */
 void		hist_toggle_help(void);

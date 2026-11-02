@@ -2,11 +2,13 @@ Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
 - qcc session log: Z/z hides sessions with no traffic, F/f shows
   failed ones only. Both last until the binlog file changes.
+  A/a shows every session again.
 - fix binkp: a file time before 1970 no longer aborts the session.
   The local file keeps its date. A time through 2446-05-10 is
   kept and sent in full.
 - binkp: the third offer in a row of the same file ends the session.
 - fix binkp: inbound abortsession runs after listed is set.
+
 
 Version 0.60.3
 ~~~~~~~~~~~~~~

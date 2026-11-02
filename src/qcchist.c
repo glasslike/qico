@@ -976,11 +976,31 @@ static void snap_cursor(void)
 }
 
 
+/* The full list opens on the newest session, and returns there too. */
+static void select_newest(void)
+{
+	if ( nrecs > 0 )
+		cursor = nrecs - 1;
+	else {
+		cursor = 0;
+		top = 0;
+	}
+}
+
+
 void hist_toggle_zeroes(void)
 {
 	hide_zero = !hide_zero;
 	help_on = 0;
-	snap_cursor();
+	/*
+	 * Turning the limit off can restore the full list. That list
+	 * always shows the newest session, whether the key was Z or A.
+	 * A limit that is still on keeps the cursor on a shown row.
+	 */
+	if ( !hide_zero && !failed_only )
+		select_newest();
+	else
+		snap_cursor();
 	sync_caption();
 }
 
@@ -989,7 +1009,21 @@ void hist_toggle_failed(void)
 {
 	failed_only = !failed_only;
 	help_on = 0;
-	snap_cursor();
+	if ( !hide_zero && !failed_only )
+		select_newest();
+	else
+		snap_cursor();
+	sync_caption();
+}
+
+
+/* Drop both limits and select the newest session. */
+void hist_show_all(void)
+{
+	hide_zero = 0;
+	failed_only = 0;
+	help_on = 0;
+	select_newest();
 	sync_caption();
 }
 
@@ -1069,6 +1103,18 @@ static void place_cursor(int body)
 		top = v - body + 1;
 	if ( top < 0 )
 		top = 0;
+	/*
+	 * top counts visible rows, and the open list keeps it on the last
+	 * page so the newest session stays in view. A filter shortens that
+	 * count without moving top, which then points at the last matching
+	 * row and leaves the rest of the window blank. Pull the page back
+	 * until it is full, or to the first row when fewer sessions match
+	 * than the window can show.
+	 */
+	if ( top > nvis - body )
+		top = nvis - body;
+	if ( top < 0 )
+		top = 0;
 }
 
 
@@ -1090,11 +1136,12 @@ void hist_draw_list(void)
 		"  L/l        leave this screen",
 		"  Up/Down    previous/next session",
 		"  PgUp/PgDn  pages",
+		"  A/a        all sessions",
 		"  Z/z        hide zeros (no bytes either way)",
 		"  F/f        failed only sessions",
 		"  Q/q        quit",
 		"",
-		"  Z, F stay until the binlog file changes",
+		"  Z, F stay until A or the binlog file changes",
 		NULL
 	};
 

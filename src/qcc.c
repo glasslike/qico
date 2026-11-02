@@ -228,8 +228,7 @@ NULL
 static char *hh[]={
 	"F1",", ",
 	"L","eave, ",
-	"Z","eroes, ",
-	"F","ailed only, ",
+	"A","ll/","Z","eroes/","F","ailed only, ",
 	"Up","/","Dn",", ",
 	"PgUp","/","PgDn",", ",
 	"Q","uit",
@@ -1967,6 +1966,14 @@ int main(int argc, char **argv, char **envp)
 					xstrcpy(buf+3,(ch=='k')?(bf+1):que->addr,64);
 					xcmd(buf,QR_KILL,strlen(buf+3)+4);
 				}
+				break;
+			case 'a': case 'A':
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_show_all();
+					freshall();
+				}
+#endif
 				break;
 			case 'z': case 'Z':
 #ifdef WITH_QCC_BINLOG
