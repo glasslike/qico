@@ -1093,7 +1093,8 @@ static int inputstr(char *str, char *name, int mode)
 							}
 						} else if(cp)cp--;
 					    } else {
-						strncpy(str+sp,str+sp+1,sl-sp);
+						/* Source and destination overlap. strncpy is undefined here. */
+						memmove(str+sp,str+sp+1,sl-sp);
 						if(cp)cp--;
 						if(cp<3&&bp) {
 							tmp=vl/3*2;
@@ -1112,7 +1113,7 @@ static int inputstr(char *str, char *name, int mode)
 			case KEY_DC:
 				if(sp<sl) {
 					sl--;
-					if(sl)strncpy(str+sp,str+sp+1,sl-sp);
+					if(sl)memmove(str+sp,str+sp+1,sl-sp);
 					fr=1;
 				} else xbeep();
 				break;
