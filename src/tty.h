@@ -166,7 +166,7 @@ typedef struct sgttyb TIO;
 #define EWBOEA()	(( errno == EWOULDBLOCK || errno == EAGAIN ))
 
 #define LCK_NAME(name, port) \
-	snprintf(name, MAX_PATH, "%s/LCK..%s", cfgs(CFG_LOCKDIR), port )
+	pathfit((name), sizeof(name), cfgs(CFG_LOCKDIR), "/LCK..", (port))
 
 extern char *tty_errs[];
 /* extern char canistr[]; */

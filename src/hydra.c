@@ -359,7 +359,7 @@ boolean hydra_devfunc(char *dev, void (*func) (byte *data, word len))
 
 #ifdef NEED_DEBUG
 
-#define ERR_LEN		17
+#define ERR_LEN		32
 
 #define HFS( f )	hydra_format_str( (char) f )
 #define HPS( p )	hydra_packet_str( (char) p )

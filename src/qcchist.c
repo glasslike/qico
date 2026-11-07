@@ -309,7 +309,7 @@ static void build_line(char *dst, int max, int col, const bl_sess_t *s)
 {
 	int gap1, gap2, addr_w, info_w, used = 0;
 	char addr[32], traffic[16], info[1100], sent[16], rcvd[16];
-	char tbuf[16], flags[5];
+	char tbuf[48], flags[5];
 
 	if ( max < 1 ) {
 		if ( max == 0 && dst )
@@ -1310,7 +1310,8 @@ void hist_draw_card(WINDOW *wmain)
 	if ( 2 < h ) {
 		left[0] = '\0';
 		if ( s->sysname[0] && s->location[0] )
-			snprintf( left, sizeof( left ), "%s, %s", s->sysname, s->location );
+			/* Both fields are BL_TEXT_LEN. The on-screen line is 256. */
+			snprintf( left, sizeof( left ), "%.*s, %.*s", 120, s->sysname, 120, s->location );
 		else if ( s->sysname[0] )
 			snprintf( left, sizeof( left ), "%s", s->sysname );
 		else if ( s->location[0] )

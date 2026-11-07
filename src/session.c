@@ -168,7 +168,7 @@ static int boxflist(flist_t **fl, char *path)
 void makeflist(flist_t **fl,ftnaddr_t *fa,int mode)
 {
     faslist_t *j;
-    char str[MAX_PATH], longboxp[MAX_PATH], *flv="hdfci";
+    char str[MAX_PATH + 64], longboxp[MAX_PATH], *flv="hdfci";
 
     DEBUG(('S',1,"Make filelist for %s",ftnaddrtoa(fa)));
     asoflist(fl,fa,mode);
@@ -181,11 +181,11 @@ void makeflist(flist_t **fl,ftnaddr_t *fa,int mode)
     if(cfgs(CFG_LONGBOXPATH)) {
         xstrcpy( longboxp, ccs, MAX_PATH );
         while(*flv) {
-            snprintf(str,MAX_STRING,"%s/%d.%d.%d.%d.%c",longboxp,fa->z,fa->n,fa->f,fa->p,*flv);
+            snprintf(str,sizeof(str),"%s/%d.%d.%d.%d.%c",longboxp,fa->z,fa->n,fa->f,fa->p,*flv);
             boxflist(fl,str);
             flv++;
         }
-        snprintf(str,MAX_STRING,"%s/%d.%d.%d.%d",longboxp,fa->z,fa->n,fa->f,fa->p);
+        snprintf(str,sizeof(str),"%s/%d.%d.%d.%d",longboxp,fa->z,fa->n,fa->f,fa->p);
         boxflist(fl,str);
     }
 }

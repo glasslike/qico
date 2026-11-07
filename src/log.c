@@ -201,7 +201,7 @@ int log_init(const char *logname, const char *ttyname)
 
 void vwrite_log(const char *str, int dbg)
 {
-	char		timedstr[LARGE_STRING + 5] = {0};
+	char		timedstr[LARGE_STRING + 64] = {0};
 	char		newstr[LARGE_STRING + 5];
 	FILE		*log_f;
 	struct tm	t;
@@ -219,14 +219,14 @@ void vwrite_log(const char *str, int dbg)
 
 #ifdef NEED_DEBUG
 	if ( facilities_levels['G'] >= 1 )
-		snprintf( timedstr, LARGE_STRING, "%02d %3s %02d %02d:%02d:%02d.%03u %s[%ld]: %s",
+		snprintf( timedstr, sizeof( timedstr ), "%02d %3s %02d %02d:%02d:%02d.%03u %s[%ld]: %s",
 			t.tm_mday, engms[t.tm_mon], t.tm_year%100, t.tm_hour,
 			t.tm_min, t.tm_sec, (unsigned) ( tv.tv_usec / 1000 ),
 			SS( log_tty ), (long) getpid(),
 			newstr );
 	else
 #endif
-	snprintf( timedstr, LARGE_STRING, "%02d %3s %02d %02d:%02d:%02d %s[%ld]: %s",
+	snprintf( timedstr, sizeof( timedstr ), "%02d %3s %02d %02d:%02d:%02d %s[%ld]: %s",
 		t.tm_mday, engms[t.tm_mon], t.tm_year%100, t.tm_hour,
 		t.tm_min, t.tm_sec, SS( log_tty ), (long) getpid(),
 		newstr );

@@ -279,6 +279,36 @@ char *xstrcat(char *dst, const char *src, size_t siz)
 }
 
 
+/*
+ * Copy a, b and c into dst in that order. A NULL piece is skipped.
+ * dst is left empty and the function returns 0 when the pieces do not
+ * fit, so the caller does not use a chopped path or command.
+ */
+int pathfit(char *dst, size_t dstsz, const char *a, const char *b, const char *c)
+{
+	size_t	n = 1;
+
+	if ( !dst || dstsz == 0 )
+		return 0;
+	dst[0] = '\0';
+	if ( a )
+		n += strlen( a );
+	if ( b )
+		n += strlen( b );
+	if ( c )
+		n += strlen( c );
+	if ( n > dstsz )
+		return 0;
+	if ( a )
+		xstrcpy( dst, a, dstsz );
+	if ( b )
+		xstrcat( dst, b, dstsz );
+	if ( c )
+		xstrcat( dst, c, dstsz );
+	return 1;
+}
+
+
 char *xstrdup(const char *str)
 {
 	char	*s;

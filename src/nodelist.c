@@ -423,7 +423,8 @@ static int ndl_lock(const char *path, int lock)
 {
 	char nlock[MAX_PATH + 5];
 
-	snprintf( nlock, MAX_PATH, "%s%s.lock", path, ndl_idx );
+	if ( !pathfit( nlock, sizeof( nlock ), path, ndl_idx, ".lock" ))
+		return lock == NDL_CHK_LOCK;
 
 	switch( lock ) {
 	case NDL_CHK_LOCK:
@@ -1088,7 +1089,11 @@ static int ndl_compile(void)
 		return 0;
 	}
 
-	snprintf( nidx, MAX_PATH, "%s%s", npath, ndl_idx );
+	if ( !pathfit( nidx, sizeof( nidx ), npath, ndl_idx, NULL )) {
+		ndl_log( "Nodelist index path is too long" );
+		ndl_lock( npath, NDL_UNLOCK );
+		return 0;
+	}
 	if ( !( idx = fopen( nidx, "wb" ))) {
 		ndl_log( "Can't open nodelist index %s for writing: %s",
 			nidx, strerror( errno ));
@@ -1156,7 +1161,8 @@ static int ndl_compile(void)
 						char	_n[MAX_PATH + 5];
 						time_t	_mtime = 0;
 
-						snprintf( _n, MAX_PATH, "%s/%s", nidx, de->d_name );
+						if ( !pathfit( _n, sizeof( _n ), nidx, "/", de->d_name ))
+							continue;
 						if ( !stat( _n, &sb ))
 							_mtime = sb.st_mtime;
 
@@ -1186,9 +1192,11 @@ static int ndl_compile(void)
 			if ( max < 0 )
 				ndl_log( "No lists matching %s/%s.[0-9] found", nidx, s );
 			else
-				snprintf( nodelist, MAX_PATH, "%s/%s", nidx, nlmax );
+				if ( !pathfit( nodelist, sizeof( nodelist ), nidx, "/", nlmax ))
+					nodelist[0] = '\0';
 		} else
-			snprintf( nodelist, MAX_PATH, "%s/%s", nidx, s );
+			if ( !pathfit( nodelist, sizeof( nodelist ), nidx, "/", s ))
+				nodelist[0] = '\0';
 
 		if ( !nodelist[0] )
 			continue;

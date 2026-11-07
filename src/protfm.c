@@ -168,7 +168,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 			return FOP_SUSPEND;
 		}
 
-	snprintf(p, MAX_PATH, "%s/tmp/", cfgs(CFG_INBOUND));
+	if ( !cfgs( CFG_INBOUND ) || !pathfit( p, sizeof( p ), cfgs( CFG_INBOUND ), "/tmp/", NULL )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 	if(stat(p, &sb))
 		if(mkdirs(p) && errno!=EEXIST) {
 			write_log("can't make directory %s: %s", p, strerror(errno));
@@ -176,7 +181,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 			skipiftic=FOP_SUSPEND;
 			return FOP_SUSPEND;
 		}
-	snprintf(p, MAX_PATH, "%s/%s", ccs, bn);
+	if ( !ccs || !pathfit( p, sizeof( p ), ccs, "/", bn )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 
 	if(!stat(p, &sb) && sb.st_size==rsize) {
 		write_log(weskipstr,recvf.fname,"");
@@ -184,7 +194,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 		return FOP_SKIP;
 	}
 
-	snprintf(p, MAX_PATH, "%s/tmp/%s", ccs, bn);
+	if ( !ccs || !pathfit( p, sizeof( p ), ccs, "/tmp/", bn )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 
 	if(!stat(p, &sb)) {
 		if(sb.st_size<rsize && sb.st_mtime==recvf.mtime) {

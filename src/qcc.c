@@ -755,11 +755,12 @@ static void freshstatus(void)
 
 static char *timestr(time_t tim)
 {
-	static char ts[10];
+	/* A full long hour count is wider than the old 10-byte field. */
+	static char ts[64];
 	long int hr;
 	if(tim<0) tim=0;
 	hr=tim/3600;
-	snprintf(ts,10,"%02ld:%02ld:%02ld",hr,tim/60-hr*60,tim%60);
+	snprintf(ts,sizeof(ts),"%02ld:%02ld:%02ld",hr,tim/60-hr*60,tim%60);
 	return ts;
 }
 

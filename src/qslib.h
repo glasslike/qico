@@ -133,6 +133,7 @@ void	skip_blanksr(char *);
 
 char	*xstrcpy(char *, const char *, size_t);
 char	*xstrcat(char *, const char *, size_t);
+int	pathfit(char *, size_t, const char *, const char *, const char *);
 
 void	bin2strhex(void *, const void *, size_t);
 int	strhex2bin(void *, const void *);

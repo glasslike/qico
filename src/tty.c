@@ -510,12 +510,14 @@ int tty_isfree(const char *port, const char *nodial)
 		return 0;
 
 	if ( nodial ) {
-		snprintf( lckname, MAX_PATH, "%s.%s", nodial, port );
+		if ( !pathfit( lckname, sizeof( lckname ), nodial, ".", port ))
+			return 0;
 		if ( !stat( lckname, &s ))
 			return 0;
 	}
 
-	LCK_NAME(lckname, port);
+	if ( !LCK_NAME(lckname, port) )
+		return 0;
 	if (( f = fopen( lckname, "r" ))) {
 		fscanf( f, "%d", &pid );
 		fclose( f );
@@ -550,7 +552,8 @@ int tty_lock(const char *port)
 	else
 		p++;
 
-	LCK_NAME(lckname, p);
+	if ( !LCK_NAME(lckname, p) )
+		return -1;
 	rc = lockpid( lckname );
 	return rc ? 0 : -1;
 }
@@ -558,7 +561,7 @@ int tty_lock(const char *port)
 
 void tty_unlock(const char *port)
 {
-	long		pid;
+	long		pid = 0;
 	char		lckname[MAX_PATH + 5];
 	const char	*p;
 	FILE		*f;
@@ -569,7 +572,8 @@ void tty_unlock(const char *port)
 	else
 		p++;
 
-	LCK_NAME(lckname, p);
+	if ( !LCK_NAME(lckname, p) )
+		return;
 	if (( f = fopen( lckname, "r" ))) {
 		fscanf( f, "%ld", &pid );
 		fclose( f );
