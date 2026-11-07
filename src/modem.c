@@ -85,7 +85,7 @@ static char *mcs[] = {             /* MC_ defined in tty.h */
 static int modem_init_device(char *dev)
 {
 	char	port[MAX_PATH + 5] = "/dev/", *p;
-	int	speed = 0;
+	int	speed = 0, lockrc;
 	pid_t	mypid = getpid();
 	TIO	tio;
 
@@ -108,7 +108,10 @@ static int modem_init_device(char *dev)
 
 	DEBUG(('M',4,"modem_init_device: port %s, speed %d", port, speed));
 
-	if ( tty_lock( port ))
+	lockrc = tty_lock( port );
+	if ( lockrc == -2 )
+		return ME_LOCKNAME;
+	if ( lockrc )
 		return ME_CANTLOCK;
 
     

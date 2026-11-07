@@ -142,6 +142,7 @@ typedef struct sgttyb TIO;
 #define ME_FLAGS	9
 #define ME_NOTATT	10
 #define ME_NODSR	11
+#define ME_LOCKNAME	12
 
 #define GETCHAR(t)		tty_getc( t )
 #define GETCHART(t)		tty_getc_timed( t )
