@@ -1,5 +1,8 @@
 Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
+- fix compiler and configure warnings on 64-bit Linux and BSD.
+- fix paths and freq commands: a line that does not fit is
+  refused and logged instead of being cut.
 - qcc session log: Z/z hides sessions with no traffic, F/f shows
   failed ones only. Both last until the binlog file changes.
   A/a shows every session again.
