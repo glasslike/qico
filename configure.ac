@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 AC_INIT([qico],[0.60.4-dev],[jame at rocasa dot us])
 AC_PREREQ(2.53)
 AC_CONFIG_SRCDIR([src/main.c])
-AM_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([subdir-objects])
 
 dnl Checks for programs.
@@ -10,15 +10,26 @@ AC_PROG_CC
 AC_PROG_AWK
 AC_PROG_RANLIB
 AC_PROG_INSTALL
-AM_PROG_LEX
+dnl noyywrap is a lex argument only since Autoconf 2.70. The lexer is
+dnl already %option noyywrap, so neither form should pull in libl.
+m4_ifdef([m4_version_prereq],
+	[m4_version_prereq([2.70],
+		[AC_PROG_LEX([noyywrap])],
+		[AM_PROG_LEX])],
+	[AM_PROG_LEX])
 AC_PROG_YACC
 AC_PROG_MAKE_SET
-AC_PROG_GCC_TRADITIONAL
 
 dnl Checks for header files.
-AC_HEADER_STDC
+dnl AC_HEADER_STDC no longer probes anything. The sources still branch on
+dnl STDC_HEADERS, so publish the modern result explicitly.
+AC_DEFINE([STDC_HEADERS], [1],
+	[Define to 1 on systems with ANSI C headers.])
 AC_HEADER_DIRENT
-AC_HEADER_TIME
+dnl Both <sys/time.h> and <time.h> can be included together on Linux and BSD.
+dnl The sources still test TIME_WITH_SYS_TIME.
+AC_DEFINE([TIME_WITH_SYS_TIME], [1],
+	[Define to 1 if sys/time.h and time.h can both be included.])
 AC_HEADER_SYS_WAIT
 AC_HEADER_TIOCGWINSZ
 AC_CHECK_HEADERS([arpa/inet.h errno.h fcntl.h libgen.h libutil.h locale.h malloc.h])
@@ -71,8 +82,9 @@ AC_C_CONST
 AC_TYPE_OFF_T
 AC_TYPE_PID_T
 AC_TYPE_SIZE_T
-AC_TYPE_SIGNAL
-AC_HEADER_TIME
+dnl Signal handlers return void on Linux and BSD. The sources still use RETSIGTYPE.
+AC_DEFINE([RETSIGTYPE], [void],
+	[Return type of signal handlers.])
 AC_STRUCT_TM
 AC_CHECK_SIZEOF([char],[1])
 AC_CHECK_SIZEOF([short],[2])
@@ -162,7 +174,7 @@ AC_CHECK_LIB(md,[MD5Init])
 
 dnl Signal handling
 AC_MSG_CHECKING(for reliable signals)
-AC_TRY_RUN([
+AC_RUN_IFELSE([AC_LANG_SOURCE([
 #include <sys/types.h>
 #include <signal.h>
 
@@ -192,16 +204,16 @@ main()
 		exit( 1 );
 	exit( 0 );
 }
-], AC_MSG_RESULT(yes),
-AC_DEFINE(SYS5SIGNALS,1,[Non-reliable signals]) AC_MSG_RESULT(no),
-AC_DEFINE(SYS5SIGNALS,1,[Non-reliable signals]) AC_MSG_RESULT(cross-compiling. No assumptions made)
-)
+])],
+[AC_MSG_RESULT(yes)],
+[AC_DEFINE(SYS5SIGNALS,1,[Non-reliable signals]) AC_MSG_RESULT(no)],
+[AC_DEFINE(SYS5SIGNALS,1,[Non-reliable signals]) AC_MSG_RESULT(cross-compiling. No assumptions made)])
 
 
 AC_MSG_CHECKING([whether to enable maintainer-specific portions of Makefiles])
 dnl maintainer-mode is disabled by default
 AC_ARG_ENABLE(maintainer-mode,
-	AC_HELP_STRING([--enable-maintainer-mode],
+	AS_HELP_STRING([--enable-maintainer-mode],
 		[enable make rules and dependencies not useful (and sometimes confusing) to the casual installer]),
 	USE_MAINTAINER_MODE=$enableval,
 	USE_MAINTAINER_MODE=no)
@@ -210,7 +222,7 @@ AC_MSG_RESULT([$USE_MAINTAINER_MODE])
 
 dnl Enable optional modules
 AC_ARG_ENABLE(dlmalloc,
-	AC_HELP_STRING([--enable-dlmalloc],[Compile & use the malloc package by Doug Lea]),
+	AS_HELP_STRING([--enable-dlmalloc],[Compile & use the malloc package by Doug Lea]),
 [
  case "$enableval" in
  'yes')
@@ -303,7 +315,7 @@ AC_CHECK_HEADER([sys/syslog.h],
 dnl Checking for config path
 AC_MSG_CHECKING([for config path])
 AC_ARG_WITH([config],
-	AC_HELP_STRING([--with-config=config],
+	AS_HELP_STRING([--with-config=config],
 		[specifies config filename (default is ${sysconfdir}/qico.conf)]),
 	with_config=$withval,
 	with_config=NONE)
@@ -327,7 +339,7 @@ AC_MSG_RESULT($with_config)
 dnl TCP Speed
 AC_MSG_CHECKING([for TCP connection speed])
 AC_ARG_WITH([tcp-speed],
-	AC_HELP_STRING([--with-tcp-speed],[specifies TCP connection speed (default is 115200)]),
+	AS_HELP_STRING([--with-tcp-speed],[specifies TCP connection speed (default is 115200)]),
 	with_tcp_speed=$withval,
 	with_tcp_speed=115200)
 AC_DEFINE_UNQUOTED(TCP_SPEED,$with_tcp_speed,[Speed for TCP connections in bps])
@@ -343,7 +355,7 @@ fi
 dnl Default Speed
 AC_MSG_CHECKING([for default port locking speed])
 AC_ARG_WITH([default-speed],
-	AC_HELP_STRING([--with-default-speed],[specifies default port locking speed (default is 9600)]),
+	AS_HELP_STRING([--with-default-speed],[specifies default port locking speed (default is 9600)]),
 	with_default_speed=$withval,
 	with_default_speed=9600)
 AC_DEFINE_UNQUOTED(DEFAULT_SPEED,$with_default_speed,[Default speed for modem connections])
@@ -359,7 +371,7 @@ fi
 dnl Shell
 AC_MSG_CHECKING([for shell])
 AC_ARG_WITH([shell],
-	AC_HELP_STRING([--with-shell],[specifies shell (default is /bin/sh)]),
+	AS_HELP_STRING([--with-shell],[specifies shell (default is /bin/sh)]),
 	with_shell=$withval,
 	with_shell=/bin/sh)
 AC_DEFINE_UNQUOTED(SHELL,"$with_shell",[Path to system shell])
@@ -376,7 +388,7 @@ fi
 dnl Lock creation style
 AC_MSG_CHECKING([for lock creation style])
 AC_ARG_WITH([lock-style],
-	AC_HELP_STRING([--with-lock-style],[select lock creation style (open or link)]),
+	AS_HELP_STRING([--with-lock-style],[select lock creation style (open or link)]),
 	with_lock_style=$withval,
 	with_lock_style=LINK)
 
@@ -397,7 +409,7 @@ esac
 
 dnl qcc support
 AC_ARG_ENABLE(qcc,
-	AC_HELP_STRING([--disable-qcc],[disable building of qcc]),
+	AS_HELP_STRING([--disable-qcc],[disable building of qcc]),
 	enable_qcc=$enableval,
 	enable_qcc=yes)
 
@@ -406,7 +418,11 @@ if test "${enable_qcc}x" != "nox"; then
 	CURSES=ncurses],[AC_CHECK_LIB(curses,main,[AC_DEFINE(HAVE_LIBCURSES,1,[Define to 1 if system have curses])
 	CURSES=curses])])
 	AC_CHECK_HEADERS([ncurses.h curses.h])
-	AC_CHECK_HEADERS([$CURSES.h],,CURSES=)
+	if test "$CURSES" = ncurses; then
+		AC_CHECK_HEADERS([ncurses.h], [], [CURSES=])
+	elif test "$CURSES" = curses; then
+		AC_CHECK_HEADERS([curses.h], [], [CURSES=])
+	fi
 	if test $CURSES; then
 		AC_CHECK_LIB($CURSES,mvvline,[AC_DEFINE(CURS_HAVE_MVVLINE,1,[Define to 1 if system (n)curses have mvvline()])])
 		AC_CHECK_LIB($CURSES,resizeterm,[AC_DEFINE(CURS_HAVE_RESIZETERM,1,[Define to 1 if system (n)curses have wresize()])])
@@ -431,7 +447,7 @@ fi
 dnl Compile in debug messages
 AC_MSG_CHECKING([for debug logging])
 AC_ARG_ENABLE(debug,
-	AC_HELP_STRING([--disable-debug],[disable adding debug messages]),
+	AS_HELP_STRING([--disable-debug],[disable adding debug messages]),
 	enable_debug=$enableval,
 	enable_debug=yes)
 
@@ -446,12 +462,12 @@ fi
 dnl Check for DNOTIFY
 AC_MSG_CHECKING([for DNOTIFY (for ASO auto-rescan)])
 AC_ARG_ENABLE(notify,
-	AC_HELP_STRING([--disable-notify],[disable use DNOTIFY for ASO auto-rescan]),
+	AS_HELP_STRING([--disable-notify],[disable use DNOTIFY for ASO auto-rescan]),
 	enable_notify=$enableval,
 	enable_notify=yes)
 
 if test "${enable_notify}x" != "nox"; then
-	AC_TRY_RUN([
+	AC_RUN_IFELSE([AC_LANG_SOURCE([
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <unistd.h>
@@ -497,10 +513,10 @@ bad:
 	close( fd );
 	rmdir("ac_xtst");
 	return rc;
-}],
-AC_MSG_RESULT(yes) AC_DEFINE(HAVE_DNOTIFY,1,[Allow use DNOTIFY for ASO auto-recan]),
-AC_MSG_RESULT(no),
-AC_MSG_RESULT(no))
+}])],
+[AC_MSG_RESULT(yes) AC_DEFINE(HAVE_DNOTIFY,1,[Allow use DNOTIFY for ASO auto-recan])],
+[AC_MSG_RESULT(no)],
+[AC_MSG_RESULT(no)])
 
 else
 
@@ -512,7 +528,7 @@ fi
 dnl HYDRA4/8/16K support (disabled by default)
 AC_MSG_CHECKING([for Hydra4k/8k/16k support])
 AC_ARG_ENABLE([hydra8k],
-	AC_HELP_STRING([--enable-hydra8k],[enable Hydra4k/8k/16k protocols support]),
+	AS_HELP_STRING([--enable-hydra8k],[enable Hydra4k/8k/16k protocols support]),
 	enable_hydra8k=$enableval,
 	enable_hydra8k=no)
 
@@ -527,7 +543,7 @@ dnl leaves the frame reader and the l/L keys out of qcc. The mailer
 dnl always writes the binlog the same way; this switch does not touch it.
 AC_MSG_CHECKING([for qcc binary-log history])
 AC_ARG_ENABLE([qcc-binlog],
-	AC_HELP_STRING([--disable-qcc-binlog],[do not read today's binlog sessions in qcc]),
+	AS_HELP_STRING([--disable-qcc-binlog],[do not read today's binlog sessions in qcc]),
 	enable_qcc_binlog=$enableval,
 	enable_qcc_binlog=yes)
 if test "x$enable_qcc_binlog" = "xyes"; then
@@ -540,7 +556,7 @@ AM_CONDITIONAL([QCC_BINLOG],[test "x$enable_qcc_binlog" = "xyes"])
 dnl Check for Binkp protocol support
 AC_MSG_CHECKING([for BinkP protocol support])
 AC_ARG_ENABLE(binkp,
-	AC_HELP_STRING([--disable-binkp],[disable BinkP protocol support]),
+	AS_HELP_STRING([--disable-binkp],[disable BinkP protocol support]),
 	want_binkp=$enableval,
 	want_binkp=yes)
 
@@ -554,7 +570,7 @@ AC_MSG_RESULT($want_binkp)
 dnl Check for perl support
 AC_MSG_CHECKING(for perl support)
 AC_ARG_ENABLE(perl,
-	AC_HELP_STRING([--enable-perl],[Enable perl hooks support]),
+	AS_HELP_STRING([--enable-perl],[Enable perl hooks support]),
 	enable_perl=$enableval,
 	enable_perl=no)
 
@@ -590,13 +606,13 @@ if test "${enable_perl}x" != "nox"; then
 		    OLD_CFLAGS=$CFLAGS
 		    LIBS="$LIBS $PERLLDFLAGS"
 		    CFLAGS="$CFLAGS $PERLCFLAGS"
-		    AC_TRY_RUN([
+		    AC_RUN_IFELSE([AC_LANG_SOURCE([
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
 int main(int argc, char** argv, char** env) {
 return perl_alloc() ? 0 : 1;
-}],
+}])],
 		    [
 		    AC_DEFINE(WITH_PERL,1,[Support for perl hooks])
 		    PERL_O='perl.$(OBJEXT)'
@@ -610,7 +626,7 @@ return perl_alloc() ? 0 : 1;
 		    dnl CFLAGS. Do not key off OS names or Perl version
 		    dnl numbers.
 		    AC_MSG_CHECKING([whether perl XSINIT_t takes a Perl interpreter])
-		    AC_TRY_COMPILE([
+		    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
@@ -621,12 +637,12 @@ static void xs_init_pthx(pTHX)
 ], [
 XSINIT_t cb = xs_init_pthx;
 (void)cb;
-],
+])],
 			[AC_DEFINE(HAVE_PERL_XSINIT_PTHX,1,
 				[Define to 1 if perl_parse XSINIT_t takes pTHX])
 			 AC_MSG_RESULT(yes)],
 			[AC_MSG_RESULT(no)])
-		    ],AC_MSG_RESULT(no),AC_MSG_RESULT(no))
+		    ],[AC_MSG_RESULT(no)],[AC_MSG_RESULT(no)])
 		    CFLAGS=$OLD_CFLAGS
 		    LIBS=$OLD_LIBS
 		    ;;
@@ -650,7 +666,7 @@ CONFIG=$with_config
 dnl Check for __attribute__((__packed__))
 AC_CACHE_CHECK([for __attribute__((__packed__))],
 ac_cv_attr_packed,
-[AC_TRY_RUN([
+[AC_RUN_IFELSE([AC_LANG_SOURCE([
 typedef struct {
 	short	a;
 	int	b;
@@ -660,7 +676,7 @@ int main(int argc, char **argv)
 {
 	return (sizeof( tst_t ) != (sizeof( short ) + sizeof( int )));
 }
-],
+])],
 [ac_cv_attr_packed=yes],
 [ac_cv_attr_packed=no],
 [ac_cv_attr_packed=no])]
