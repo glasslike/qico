@@ -1028,7 +1028,9 @@ static int inputstr(char *str, char *name, int mode)
 	edm=1;freshhelp();wnoutrefresh(whelp);
 	ms=mode?(mode==1?40:5):(MAX_STRING-2);
 	if(ms<strlen(name))ms=strlen(name)+1;
-	if((ms+2)>COL)ms=COL-2;vl=ms-1;
+	if((ms+2)>COL)
+		ms=COL-2;
+	vl=ms-1;
 	yp=LINES/2-2;if(yp<=MH)yp=MH+1;
 	iw=newwin(3,ms+2,yp,COL/2-ms/2);
 	wbkgd(iw,COLOR_PAIR(8)|' ');
@@ -1949,7 +1951,9 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case 'w': case 'W': case 'u': case 'U':
 			case 'i': case 'I': case 'h':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que)break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que)break;
 				xstrcpy(buf+3,que->addr,64);
 				len=strlen(buf+3)+4;
 				buf[len]=ch;
@@ -1963,7 +1967,9 @@ int main(int argc, char **argv, char **envp)
 				xcmd(buf,QR_STS,len+2);
 				break;
 			case 'k': case 'K':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que)break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que)break;
 				bf=getnode((ch=='k')?"Kill all files for (addr+'y'): ":"Kill all files for current addr? ('y'=yes, any other=no): ");
 				if(bf&&tolower(xuchar(*bf))=='y'&&bf[1]) {
 					xstrcpy(buf+3,(ch=='k')?(bf+1):que->addr,64);
@@ -1994,11 +2000,15 @@ int main(int argc, char **argv, char **envp)
 					break;
 				}
 #endif
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='F')break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='F')break;
 				printinfo(ch=='F'?que->addr:getnode("Get info about address: "),ch=='f',buf);
 				break;
 			case 'e': case 'E':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='E')break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='E')break;
 				if(ch=='e') {
 					bf=getnode("Request file(s) from node: ");
 					if(!bf||*bf!='n'||!bf[1])break;
@@ -2018,7 +2028,9 @@ int main(int argc, char **argv, char **envp)
 				}
 				break;
 			case 's': case 'S':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='S')break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='S')break;
 				if(ch=='s') {
 					bf=getnode("Send file to node: ");
 					if(!bf||!strchr("HDNCI",toupper(xuchar(*bf)))||!bf[1])break;

@@ -2490,7 +2490,7 @@ int hydra_send(char *txpathname, char *txalias)
         rxclose( &rxfd, ( res == XFER_OK ) ? FOP_OK : FOP_ERROR );
 
 
-	if ( res == XFER_ABORT ) {
+    if ( res == XFER_ABORT ) {
 		PURGEOUT();
 		if ( tty_gothup != HUP_LINE ) {
 			DEBUG(('H',2,"Sending abortstr"));

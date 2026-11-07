@@ -245,7 +245,9 @@ int rxclose(FILE **f, int what)
 	if(!f || !*f) return FOP_ERROR;
 	recvf.toff+=recvf.foff;recvf.stot+=recvf.soff;
 	*p2=0;
-	if(!cps) cps=1;cps=(recvf.foff-recvf.soff)/cps;
+	if(!cps)
+		cps=1;
+	cps=(recvf.foff-recvf.soff)/cps;
 	IFPerl(if((ss=perl_end_recv(what))) {
 		if(!*ss)what=FOP_SKIP;
 		else xstrcpy(p2,ss,MAX_PATH);});
@@ -393,7 +395,9 @@ int txclose(FILE **f, int what)
 	if(!f || !*f) return FOP_ERROR;
 	sendf.toff+=sendf.foff;sendf.stot+=sendf.soff;
 
-	if(!cps) cps=1;cps=(sendf.foff-sendf.soff)/cps;
+	if(!cps)
+		cps=1;
+	cps=(sendf.foff-sendf.soff)/cps;
 	IFPerl(perl_end_send(what));
 	switch(what) {
 		case FOP_SUSPEND: ss="suspended";break;
