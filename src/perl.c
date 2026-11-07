@@ -304,7 +304,10 @@ int perl_init(const char *script, int mode)
 		perl_done(0);
 		return 0;
 	}
-	pladd_strz(sv,"version",version);
+	if((sv=perl_get_sv("version",TRUE))) {
+		sv_setpv(sv, version);
+		SvREADONLY_on(sv);
+	}
 	perl_setup(mode,1);
 	for(rc=0;rc<sizeof(perl_const)/sizeof(*perl_const);rc++)
 		pladd_int(sv,perl_const[rc].name,perl_const[rc].val);

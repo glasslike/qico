@@ -84,13 +84,25 @@
 
 
 #ifdef POSIX_TERMIOS
-static char tio_compilation_type[]="@(#)tty.c compiled with POSIX_TERMIOS";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with POSIX_TERMIOS";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with POSIX_TERMIOS";
+#endif
 #endif
 #ifdef SYSV_TERMIO
-static char tio_compilation_type[]="@(#)tty.c compiled with SYSV_TERMIO";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with SYSV_TERMIO";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with SYSV_TERMIO";
+#endif
 #endif
 #ifdef BSD_SGTTY
-static char tio_compilation_type[]="@(#)tty.c compiled with BSD_SGTTY";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with BSD_SGTTY";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with BSD_SGTTY";
+#endif
 #endif
 
 
@@ -814,18 +826,6 @@ int tty_dcd(int fd)
 	DEBUG(('M',2,"tty_dcd: CD is %s",(rs_lines & TIO_F_DCD ? "On" : "Off")));
 
 	return ( rs_lines & TIO_F_DCD );
-}
-
-
-/*
- * Close all FDs >= a specified value
- */
-static void fd_close_all(int startfd)
-{
-	int fdlimit = sysconf(_SC_OPEN_MAX);
-
-	while( startfd < fdlimit )
-		close( startfd++ );
 }
 
 

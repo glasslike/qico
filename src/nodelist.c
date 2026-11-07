@@ -938,7 +938,6 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 {
 	int		ptr;
 	char		ndl_str[MAX_STRING + 5], *p, *t;
-	idx_t		*ndl_i;
 	ninfo_t		*nlent;
 	ndl_field_t	field = NDL_STATUS;
 
@@ -946,8 +945,6 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 
 	if ( nodelist_index == NULL && ( ptr = ndl_open()) < 1 )
 		return ptr;
-
-	ndl_i = nodelist_index;
 
 	DEBUG(('N',2,"ndl_query: nodelist_index %.8p",nodelist_index));
 

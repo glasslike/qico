@@ -284,7 +284,7 @@ static int msgs(char id, char *str, ...)
 
 	mkheader( bps->mqueue[bps->nmsgs].msg, len | 0x8000);
 	bps->mqueue[bps->nmsgs].msg[2] = (byte) id;
-	xstrcpy( bps->mqueue[bps->nmsgs].msg + 3, msg_body, len );
+	xstrcpy( (char *) (bps->mqueue[bps->nmsgs].msg + 3), msg_body, len );
 	bps->mqueue[bps->nmsgs].len += BLK_HDR_SIZE;
 
 	if ( bps->opt_cr == O_YES )

@@ -390,19 +390,6 @@ int lockpid(const char *pidfn)
 }
 
 
-static int touch(char *fn)
-{
-	FILE *f = fopen( fn, "a" );
-
-	if ( f ) {
-		fclose( f );
-		return 1;
-	} else
-		write_log( "can't touch '%s': %s", fn, strerror( errno ));
-	return 0;
-}
-
-
 int lunlink(const char *fname)
 {
 	int rc = 0;

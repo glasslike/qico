@@ -287,6 +287,7 @@ void write_log(char *str, ...)
     tim = time( NULL );
     t = localtime( &tim );
     getyx( wlog, y, x );
+    (void) y;
     wattron( wlog, A_BOLD );
     if ( x )
         waddch( wlog, '\n' );
@@ -849,6 +850,7 @@ static void logit(char *str,WINDOW *w,int s)
 
 	if(s>=0)cu=(slots[s]->lm==slots[s]->lc);
 	getyx(w,y,x);
+	(void)y;
 	if(cu&&x)waddch(w,'\n');
 	if(cu) {
 		scrollok(w,FALSE);

@@ -2,7 +2,7 @@
  * lexical parser
  * $Id: flaglex.l,v 1.5 2005/05/11 13:22:40 mitry Exp $
  **********************************************************/
-%option noyywrap case-insensitive never-interactive nounput
+%option noyywrap noinput case-insensitive never-interactive nounput
 %{
 
 #ifndef yywrap

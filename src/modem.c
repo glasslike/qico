@@ -182,25 +182,6 @@ static int modem_init_device(char *dev)
 }
 
 
-/*
- * Loop through all devices in "ports", check "nodial"
- * and return available port or NULL
- */
-static char *modem_find_device(char *firstport)
-{
-	DEBUG(('M',2,"modem_find_device"));
-
-#if 0
-	slist_t *ports = cfgs( CFG_PORT );
-
-	if ( firstport && strlen( *firstport ) > 0 )
-
-
-#endif
-	return NULL;
-}
-
-
 
 /* clean_line()
  *

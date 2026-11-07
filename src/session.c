@@ -574,7 +574,6 @@ char *session_abort_text(void)
 static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
 {
     int rc, proto, xproto;
-    unsigned long nfiles;
     char *t, *x, *why = NULL, pr[3], s[MAX_STRING];
     falist_t *pp = NULL;
     qitem_t *q = NULL;
@@ -667,7 +666,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
                 return S_FAILURE;
             }
 
-        nfiles = rc = 0;
+        rc = 0;
         t = NULL;
 
 
