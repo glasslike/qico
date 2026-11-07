@@ -168,7 +168,7 @@ static int getfasl(faslist_t **to, const char *from)
 
 static int getyesno(int *to, const char *from)
 {
-	switch( tolower( *from )) {
+	switch( tolower( xuchar( *from ))) {
 	case 'y':
 	case 't':
 	case '1':
@@ -447,7 +447,7 @@ contl:
         }
 
         if ( *p != '{' ) {
-            if ( *p == '$' && isgraph( p[1] ))
+            if ( *p == '$' && isgraph( xuchar( p[1] )))
                 if (( k = strchr( p, '=' )))
                     *k = ' ';
             /*
@@ -472,7 +472,7 @@ contd:
             char *en = NULL;
             aslist_t *as;
 
-            for(; *e && isgraph( *e ) && *e != ')'; e++ );
+            for(; *e && isgraph( xuchar( *e )) && *e != ')'; e++ );
 
             if ( *e == ')' ) {
                 *e++ = 0;
@@ -503,7 +503,7 @@ contd:
             }
         }
 
-        if ( *p== '$' && isgraph( p[1] ))  /* Found new define */
+        if ( *p== '$' && isgraph( xuchar( p[1] )))  /* Found new define */
             aslist_add( &defs, p + 1, t );
         else if ( !strcasecmp( p, "include" )) {
             if(!strncmp(cfgname,t,MAX_STRING)) {

@@ -195,7 +195,7 @@ static int binkp_init(int to)
 	bps->got_adr = 0;
 
 	for( p = cfgs( CFG_BINKPOPT ); *p; p++ ) {
-		switch(tolower(*p)) {
+		switch(tolower(xuchar(*p))) {
 		case 'p':					/* Force password digest */
 			bps->opt_md |= O_NEED;
 
@@ -588,13 +588,13 @@ static int M_nul(BPS *bp, byte *arg)
 			rnode->speed = spd;
 		else {
 			comma = skip_blanks( buf + 4 );
-			while( comma && *comma && isdigit( *comma ))
+			while( comma && *comma && isdigit( xuchar( *comma )))
 				comma++;
 			if ( !comma || !*comma )
 				rnode->speed = TCP_SPEED;
-			else if ( tolower( *comma ) == 'k' )
+			else if ( tolower( xuchar( *comma )) == 'k' )
 				rnode->speed = spd * 1024;
-			else if ( tolower( *comma ) == 'm' )
+			else if ( tolower( xuchar( *comma )) == 'm' )
 				rnode->speed = spd * 1024 * 1024;
 			else
 				rnode->speed = TCP_SPEED;
@@ -613,16 +613,16 @@ static int M_nul(BPS *bp, byte *arg)
 
 		buf = skip_blanks( buf + 5 );
 
-		if ( isalpha( *buf ))			/* Skip day of week name "Mon, " */
+		if ( isalpha( xuchar( *buf )))			/* Skip day of week name "Mon, " */
 			buf = skip_blanks( buf + 5 );
 
 		DEBUG(('B',9,"1..... buf '%s'", buf));
-		if ( BMALTL && isdigit( *buf ) && ( isdigit( buf[1] ) || isspace( buf[1] ))) {
+		if ( BMALTL && isdigit( xuchar( *buf )) && ( isdigit( xuchar( buf[1] )) || isspace( xuchar( buf[1] )))) {
 			tt.tm_mday = atoi( buf );
 			buf = skip_blanks( buf + 2 );
 
 			DEBUG(('B',9,"2..... buf '%s'", buf));
-			if ( BMALTL && isalpha( *buf )) {
+			if ( BMALTL && isalpha( xuchar( *buf ))) {
 				buf[3] = '\0';
 				for( gmt = 0; gmt < 12; gmt++ ) {
 					if ( !strncasecmp( month_names[gmt], buf, 3 )) {
@@ -636,7 +636,7 @@ static int M_nul(BPS *bp, byte *arg)
 					buf = skip_blanks( buf + 4 );
 
 					DEBUG(('B',9,"4..... buf '%s'", buf));
-					if ( BMALTL && isdigit( *buf )) {
+					if ( BMALTL && isdigit( xuchar( *buf ))) {
 						gmt = atol( buf );
 						if ( errno != ERANGE ) {
 							if ( gmt > 1900 )
@@ -671,8 +671,8 @@ static int M_nul(BPS *bp, byte *arg)
 									while( *n && *n++ != ' ' );
 
 									DEBUG(('B',9,"A..... n '%s'", n));
-									if ( *n && isdigit( n[1] ) && isdigit( n[2] )
-										&& isdigit( n[3] ) && isdigit( n[4] ))
+									if ( *n && isdigit( xuchar( n[1] )) && isdigit( xuchar( n[2] ))
+										&& isdigit( xuchar( n[3] )) && isdigit( xuchar( n[4] )))
 									{
 										gmt = ((xN(1) * 10 + xN(2)) * 60 + (xN(3) * 10 + xN(4))) * 60;
 										if ( *n == '-' )
@@ -707,10 +707,10 @@ static int M_nul(BPS *bp, byte *arg)
 			bp->delay_eob = 1;
 	} else if ( !strncmp( buf, "TRF ", 4 )) {
 		n = skip_blanks( buf + 4 );
-		if ( n && *n && isdigit( *n )) {
+		if ( n && *n && isdigit( xuchar( *n ))) {
 			rnode->netmail = atoi( n );
 			n = skip_blanks( strchr( n, ' ' ));
-			if ( n && *n && isdigit( *n ))
+			if ( n && *n && isdigit( xuchar( *n )))
 				rnode->files = atoi( n );
 		}
 		if ( rnode->netmail + rnode->files )
@@ -1232,7 +1232,7 @@ static int M_file(BPS *bp, byte *arg)
 	bp->rfname = xstrdup( qbasename( fname ));
 
 	for( i = 0, n = 0; i < (int) strlen( fname ); ) {
-		if ( fname[i] == '\\' && tolower( fname[i+1] ) == 'x' ) {
+		if ( fname[i] == '\\' && tolower( xuchar( fname[i+1] )) == 'x' ) {
 			fname[n++] = hexdcd( fname[i+2], fname[i+3] );
 			i += 4;
 		} else

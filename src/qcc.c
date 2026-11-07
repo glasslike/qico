@@ -1314,7 +1314,7 @@ static void printinfo(char *addr, int what, char *buf)
 	int	rc;
 	char	*p, *t;
 
-	if ( strchr( "NDICH", toupper( *addr )))
+	if ( strchr( "NDICH", toupper( xuchar( *addr ))))
 		addr++;
 	else if( what )
 		return;
@@ -1848,9 +1848,9 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case 'p':
 				bf=getnode("Create poll for address: ");
-				if(bf&&strchr("HDNCI",toupper(*bf))&&bf[1]) {
+				if(bf&&strchr("HDNCI",toupper(xuchar(*bf)))&&bf[1]) {
 					xstrcpy(buf+3,bf+1,64);
-					buf[4+strlen(buf+3)]=toupper(*bf);
+					buf[4+strlen(buf+3)]=toupper(xuchar(*bf));
 					xcmd(buf,QR_POLL,strlen(buf+3)+5);
 				}
 				break;
@@ -1963,7 +1963,7 @@ int main(int argc, char **argv, char **envp)
 			case 'k': case 'K':
 				for(;que&&que->n!=q_pos;que=que->next);if(!que)break;
 				bf=getnode((ch=='k')?"Kill all files for (addr+'y'): ":"Kill all files for current addr? ('y'=yes, any other=no): ");
-				if(bf&&tolower(*bf)=='y'&&bf[1]) {
+				if(bf&&tolower(xuchar(*bf))=='y'&&bf[1]) {
 					xstrcpy(buf+3,(ch=='k')?(bf+1):que->addr,64);
 					xcmd(buf,QR_KILL,strlen(buf+3)+4);
 				}
@@ -2019,7 +2019,7 @@ int main(int argc, char **argv, char **envp)
 				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='S')break;
 				if(ch=='s') {
 					bf=getnode("Send file to node: ");
-					if(!bf||!strchr("HDNCI",toupper(*bf))||!bf[1])break;
+					if(!bf||!strchr("HDNCI",toupper(xuchar(*bf)))||!bf[1])break;
 					ch=*bf++;
 				} else bf=que->addr;
 				len=strlen(bf);

@@ -326,7 +326,7 @@ tcp_connect_socks(char *name)
 		buf[1] = 1;
 		buf[2] = 0;
         
-		if ( isdigit( *name ) && (da.s_addr = inet_addr( name )) != -1 ) {
+		if ( isdigit( xuchar( *name )) && (da.s_addr = inet_addr( name )) != -1 ) {
 			buf[3] = 1;
 			memcpy( buf + 4, &da, 4 );
 			n = buf + 8;

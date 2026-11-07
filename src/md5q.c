@@ -500,7 +500,7 @@ unsigned char *md5_challenge(const unsigned char *buf)
         if (( n = strstr( n, "MD5" )) == NULL )
             return NULL;
         while( *n && *n++ != '-' );
-        if ( !*n || !isxdigit( *n ))
+        if ( !*n || !isxdigit( xuchar( *n )))
             return NULL;
         count = strspn( n, hexdigitsall );
         if ( !count )

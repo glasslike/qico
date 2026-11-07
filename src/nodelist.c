@@ -1716,7 +1716,7 @@ static int chktxy(const char *p)
 		char *c = (char *)(p + 1);
 
 		while( *c ) {
-			char t = tolower( *c++ );
+			char t = tolower( xuchar( *c++ ));
 			if ( t < 'a' || t > 'x' )
 				return 0;
 		}
@@ -1784,7 +1784,7 @@ static int parsetime(const char *tstr, int *day, int *hour, int *min)
 	*hour = atoi( s );
 
 	s = strchr( s, ':' );
-	*min = ( s && isdigit(*(s + 1))) ? atoi( s + 1 ) : 0;
+	*min = ( s && isdigit( xuchar( *(s + 1) ))) ? atoi( s + 1 ) : 0;
 
 	DEBUG(('N',3,"parsetime: %d, %d, %d", *day, *hour, *min));
 	return 1;

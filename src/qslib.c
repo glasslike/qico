@@ -133,7 +133,7 @@ void *xrealloc(void *ptr, size_t size)
 void strlwr(char *s)
 {
 	while( s && *s ) {
-		*s = tolower( *s );
+		*s = tolower( xuchar( *s ));
 		s++;
 	}
 }
@@ -142,7 +142,7 @@ void strlwr(char *s)
 void strupr(char *s)
 {
 	while( s && *s ) {
-		*s = toupper( *s );
+		*s = toupper( xuchar( *s ));
 		s++;
 	}
 }
@@ -391,9 +391,9 @@ char *wktime_str(const char *flags)
 		}
 		if ( p[0] == 'T' && strlen( p ) == 3 ) {
 			snprintf( res, 79, "%02ld:%02d-%02ld:%02d",
-				( toupper( p[1] ) - 'A' + tz ) % 24,
+				( toupper( xuchar( p[1] )) - 'A' + tz ) % 24,
 				islower((int) p[1] ) ? 30 : 0,
-				( toupper( p[2] ) - 'A' + tz ) % 24,
+				( toupper( xuchar( p[2] )) - 'A' + tz ) % 24,
 				islower((int) p[2] ) ? 30 : 0 );
 			break;
 		}

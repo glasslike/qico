@@ -434,7 +434,7 @@ int whattype(const char *fn)
 			case 7: return IS_PKT;
 			case 8: return IS_REQ;
 			default:
-				low = tolower( p[2] );
+				low = tolower( xuchar( p[2] ));
 				if (( low >= '0' && low <= '9' )
 					|| ( low >= 'a' && low <= 'z' ))
 					return IS_ARC;

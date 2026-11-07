@@ -104,7 +104,15 @@ extern	char *infostrs[];
 
 #define SS(str) ((str)?(str):"")
 
-#define XBLANK( str ) ( *(str) && isspace( *(str) ))
+/*
+ * ctype(3) and our own 256-slot tables are indexed by unsigned char.
+ * Plain char is signed on x86 and aarch64, so a byte in 128..255 must be
+ * widened before use. Do not pass EOF through this macro: (unsigned char)EOF
+ * is 255, not the end-of-file indicator.
+ */
+#define xuchar(c) ((int)(unsigned char)(c))
+
+#define XBLANK( str ) ( *(str) && isspace( xuchar( *(str) )))
 #define xmalloc(n) _xmalloc((size_t)(n))
 #define xcalloc(n,s) _xcalloc((size_t)(n),(size_t)(s))
 

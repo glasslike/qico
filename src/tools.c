@@ -84,7 +84,7 @@ static int initcharset(char *name,unsigned char *tab)
     }
     memset(tab,0,128);
     while(fgets(buf,MAX_STRING,f)) {
-        if(!isdigit(*buf))continue;
+        if(!isdigit(xuchar(*buf)))continue;
         if(*buf=='0'&&buf[1]=='x') {
             if(sscanf(buf,"0x%x 0x%x",&i,&c)!=2)continue;
         } else {
@@ -639,7 +639,7 @@ char *fnc(char *s)
 
 	while( *p && *p != '.' && i < 8 ) {
 		if ( dosallowin83( *p ))
-			s8[i++] = tolower( *p );
+			s8[i++] = tolower( xuchar( *p ));
 		p++;
 	}
 	s8[i] = '\0';
@@ -661,7 +661,7 @@ char *fnc(char *s)
 			i = strlen( s8 );
 			while( *p && q > p ) {
 				if ( dosallowin83( *p ))
-					s8[i++] = tolower( *p );
+					s8[i++] = tolower( xuchar( *p ));
 				p++;
 			}
 			s8[i] = '\0';

@@ -476,7 +476,7 @@ void emsi_makedat(ftnaddr_t *remaddr, unsigned long mail, unsigned long files,
 
 	if ( !( lopt & P_NCP )) {
 		while( *p ) {
-			switch(toupper(*p++)) {
+			switch(toupper(xuchar(*p++))) {
 			case '1':
 				EMSI_CAT( "ZMO," );
 				c = 1;
