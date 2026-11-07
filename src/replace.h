@@ -13,9 +13,15 @@
 extern char *strsep(char **str, const char *delim);
 #endif
 
-#ifndef HAVE_STRCASESTR
+/*
+ * glibc provides strcasestr but declares it only when a feature macro such
+ * as _GNU_SOURCE is set. AC_CHECK_FUNCS still finds the symbol, so
+ * HAVE_STRCASESTR is 1 and the old guard left callers with an implicit int
+ * return. Declare it whenever this header is used. A system header that
+ * already published the same type may declare it again; that is allowed.
+ * When the libc has no strcasestr, strcasestr.c supplies this signature.
+ */
 extern char *strcasestr(const char *s, const char *find);
-#endif
 
 #ifndef HAVE_STRCSPN
 extern size_t strcspn(const char *s1, register const char *s2);
