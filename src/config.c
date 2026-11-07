@@ -435,7 +435,7 @@ contl:
         p = s;
 
         if ( verbose_config )
-            printf( "** cfg line: %d: '%s', len = %-4d\n", line, p, strlen( s ));
+            printf( "** cfg line: %d: '%s', len = %-4lu\n", line, p, (unsigned long) strlen( s ));
 
         t = p + strlen( p ) - 1;
 

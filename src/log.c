@@ -169,7 +169,7 @@ int log_init(const char *logname, const char *ttyname)
 		len = strlen( progname ) + 2 + strlen( ttyname );
 		n = malloc( len );
 		if ( !n ) {
-			fprintf( stderr, "can't malloc() %d bytes of memory\n", len );
+			fprintf( stderr, "can't malloc() %lu bytes of memory\n", (unsigned long) len );
 			abort();
 			exit(1);
 		}

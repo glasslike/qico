@@ -192,8 +192,22 @@ char *mapname(char *fn, char *map, size_t size)
 	t = whattype( fn );
 
 	if ( strchr( map, 'b' ) && t != IS_FILE ) {
+		char	ext[MAX_PATH];
+		char	shortname[14];
+
+		/*
+		 * The extension pointer used to alias fn while snprintf wrote
+		 * fn, so the suffix was read from memory being overwritten.
+		 * Copy it aside first. The 14-byte result is the historical
+		 * 8.3 slot; size is the caller's real buffer.
+		 */
 		l = strrchr( fn, '.' );
-		snprintf( fn, 14, "%08lx%s", crc32s( fn ), l );
+		ext[0] = '\0';
+		if ( l )
+			xstrcpy( ext, l, sizeof( ext ));
+		snprintf( shortname, sizeof( shortname ), "%08lx%s",
+			(unsigned long) crc32s( fn ), ext );
+		xstrcpy( fn, shortname, size );
 	}
 
 	if ( strchr( map, 'u' ))

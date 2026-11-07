@@ -927,7 +927,8 @@ static void freshqueue(void)
 		waddstr(wmain,q->addr);
 		for(k=0;k<COL-24-Q_MAXBIT-strlen(q->addr);k++)waddch(wmain,' ');
 		snprintf(str,MAX_STRING," %5lu%c %6lu%c  %3d  ",
-		    SIZES(q->mail),SIZEC(q->mail),SIZES(q->files),SIZEC(q->files),q->try);
+		    (unsigned long)SIZES(q->mail),SIZEC(q->mail),
+		    (unsigned long)SIZES(q->files),SIZEC(q->files),q->try);
 		waddstr(wmain,str);
 		for(k=0,l=1;k<Q_MAXBIT;k++) {
 			if(q_pos!=q->n)wattron(wmain,COLOR_PAIR(qclrs[k]));

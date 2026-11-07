@@ -1634,9 +1634,17 @@ int hydra_send(char *txpathname, char *txalias)
                                 (dword) sendf.ftot,
                                 (int) (txfsize * 10L / effbaud + 27L) / 54L));
                      }
+                     /*
+                      * Hydra FINFO stores each number as exactly eight hex
+                      * digits. dword is 32 bits, but %lx consumes an
+                      * unsigned long, which is 64 bits on LP64. Pass the
+                      * 32-bit value widened to unsigned long so the field
+                      * width stays eight digits on ILP32 and LP64.
+                      */
                      snprintf((char *) txbufin, 1024, "%08lx%08lx%08lx%08lx%08lx%s",
-                         (dword) sendf.mtime, (dword) sendf.ftot,
-                         0L, 0L, 0L, fnc( sendf.fname ));
+                         (unsigned long) (dword) sendf.mtime,
+                         (unsigned long) (dword) sendf.ftot,
+                         0UL, 0UL, 0UL, fnc( sendf.fname ));
                          /* we shall support HOPT_NFI
                          ( sendf.nf == 1 ) ? sendf.allf : sendf.nf, fnc( sendf.fname ));
                          */
@@ -1860,8 +1868,18 @@ int hydra_send(char *txpathname, char *txalias)
                      p = (char *) rxBuf + rxtx;
                      DEBUG(('H',5,"p='%s'", p));
 
-                     rxwindow = txwindow = 0L;
-                     sscanf(p,"%08lx%08lx", (dword *) &rxwindow, (dword *) &txwindow);
+                     {
+                         /* %lx writes an unsigned long. The window variables
+                          * are long, so scan into matching temporaries and
+                          * then assign. A dword* cast would tell the compiler
+                          * the destination is 32 bits. */
+                         unsigned long rxwin_ul = 0, txwin_ul = 0;
+
+                         rxwindow = txwindow = 0L;
+                         sscanf(p, "%08lx%08lx", &rxwin_ul, &txwin_ul);
+                         rxwindow = (long) rxwin_ul;
+                         txwindow = (long) txwin_ul;
+                     }
                      
                      DEBUG(('H',5,"rxwindow: %ld", rxwindow));
                      DEBUG(('H',5,"txwindow: %ld", txwindow));
@@ -1888,10 +1906,12 @@ int hydra_send(char *txpathname, char *txalias)
                      txpktprefix[H_PKTPREFIX] = '\0';
 
                      if ( !batchesdone ) {
+                         unsigned long rev_ul = 0;
                          long revstamp;
 
                          p = (char *) rxBuf;
-                         sscanf(p,"%08lx", (dword *) &revstamp);
+                         sscanf(p, "%08lx", &rev_ul);
+                         revstamp = (long) rev_ul;
                          p += 8;
                          
                          DEBUG(('H',1,"Hydra: Remote HydraRev='%s'", h_revdate(revstamp)));
@@ -1945,10 +1965,19 @@ int hydra_send(char *txpathname, char *txalias)
                      }
                      else {
                          dword count;
+                         unsigned long mtime_ul = 0, size_ul = 0, count_ul = 0;
 
+                         /*
+                          * rxftime is a 32-bit h_timer. %lx stores a full
+                          * unsigned long (8 bytes on LP64), which used to
+                          * spill into the next static. Scan into temporaries.
+                          */
                          rxfsize = rxftime = 0L;
-                         sscanf((char *) rxBuf, "%08lx%08lx", &rxftime, (dword *) &rxfsize);
-                         sscanf((char *) rxBuf + 32, "%08lx", &count);
+                         sscanf((char *) rxBuf, "%08lx%08lx", &mtime_ul, &size_ul);
+                         rxftime = (h_timer) mtime_ul;
+                         rxfsize = (long) size_ul;
+                         sscanf((char *) rxBuf + 32, "%08lx", &count_ul);
+                         count = (dword) count_ul;
 
                          if ( !recvf.allf && (int) count)
                              recvf.allf = (int) count;
