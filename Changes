@@ -1,5 +1,7 @@
 Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
+- fix outbound session: session is recorded as the address we called,
+  not the remote's first AKA.
 - fix compiler and configure warnings on 64-bit Linux and BSD.
 - fix paths and freq commands: a line that does not fit is
   refused and logged instead of being cut.

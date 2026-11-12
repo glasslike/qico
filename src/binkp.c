@@ -921,7 +921,8 @@ static int M_adr(BPS *bp, byte *arg)
 	if ( bp->to ) {
 		if ( !has_addr( bp->remaddr, rnode->addrs )) {
 			log_rinfo( rnode );
-			write_log( "Called the wrong system" );
+			write_log( "called %s, but remote has no such AKA",
+				ftnaddrtoa( bp->remaddr ));
 			binlog_set_result( "wrong system" );
 			msgs( BPM_ERR, "Sorry, you are not who I need" );
 			bp->rc = S_FAILURE|S_ADDTRY;
@@ -1104,7 +1105,8 @@ static int binkp_hsdone(BPS *bp)
 	write_log( "options: %s", tmp );
 	IFPerl(if(perl_on_session(tmp)!=S_OK) return 0);
     
-	title( "%sbound session %s", bp->to ? "Out" : "In", ftnaddrtoa( &rnode->addrs->addr ));
+	title( "%sbound session %s", bp->to ? "Out" : "In",
+		ftnaddrtoa( session_id_addr( bp->remaddr )));
 	qemsisend( rnode );
 	qpreset( 0 );
 	qpreset( 1 );

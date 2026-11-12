@@ -499,7 +499,8 @@ int chatsend(unsigned char *str)
 	if(!c_devfree())return 1;
 	if(chattimer<2) {
 		c_devsend((unsigned char*)hellostr,strlen(hellostr)+1);
-		chatlg=chatlog_init(rnode->sysop,&rnode->addrs->addr,0);
+		chatlg=chatlog_init(rnode->sysop,
+			session_id_addr( ( rnode->options & O_INB ) ? NULL : &ndefaddr ), 0);
 		qchat("");
 	} else if(*str!=5) {
 		xstrcpy( (char*) ubuf, (char*) str, CHAT_BUF);
@@ -520,7 +521,8 @@ void c_devrecv(unsigned char *data,unsigned len)
 		char *p;
 		if(len>5&&data[1]!=5&&(p=strstr((char*)data," * "))&&(strstr(p+3,"lose")||strstr(p+3,"has chat")))return;
 		c_devsend((unsigned char*)hellostr,strlen(hellostr));
-		chatlg=chatlog_init(rnode->sysop,&rnode->addrs->addr,1);
+		chatlg=chatlog_init(rnode->sysop,
+			session_id_addr( ( rnode->options & O_INB ) ? NULL : &ndefaddr ), 1);
 	}
 	recode_to_local((char*)data);
 	if(data[strlen((char*)data)-1]==5)data[strlen((char*)data)-1]='\n';

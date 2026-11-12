@@ -143,6 +143,21 @@ void	flkill(flist_t **, int);
  * a sanitized copy (no controls, bounded) valid until the next call.
  */
 char	*session_abort_text(void);
+/*
+ * Address this session is known by in the log, history, binlog,
+ * window title and session hooks. An outbound session is named by
+ * the address we dialed, whether or not the remote presented it
+ * (binkd's state->to). The handshake still fails when that address
+ * is absent from the remote list; only the name of the failed
+ * attempt stays the dialed one. A `share' address is the exception:
+ * the handshake appends it for failover mail, so a call placed to
+ * the shared AKA is named by the first presented address that is
+ * not shared. Inbound has no dialed address and uses that same
+ * first real address. No address at all: NULL. Does not reorder
+ * rnode->addrs. Packet rewrite, file-request replies and
+ * holdonsuccess are unchanged.
+ */
+const ftnaddr_t	*session_id_addr(const ftnaddr_t *calladdr);
 void	flexecute(flist_t *);
 void	addflist(flist_t **, char *, char *, char, off_t, FILE *, int);
 void	simulate_send(ftnaddr_t *);

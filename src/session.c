@@ -571,6 +571,39 @@ char *session_abort_text(void)
 }
 
 
+/*
+ * See mailer.h. Outbound keeps the dialed address even when the
+ * remote listed something else: the attempt is already a failure
+ * ("called %s, but remote has no such AKA" / "remote is not ..."), and the summary
+ * must name the node we called, as binkd does with state->to.
+ *
+ * `share' removes a shared AKA the remote claimed and appends it
+ * again when the peer is a member. A call placed to that shared
+ * AKA would otherwise be recorded under the shared name, because
+ * the appended address is in rnode->addrs. Skip it and use the
+ * first presented address that is not shared.
+ */
+const ftnaddr_t *session_id_addr(const ftnaddr_t *calladdr)
+{
+    falist_t *a;
+
+    if ( calladdr && !share_is_shared( calladdr ))
+        return calladdr;
+
+    if ( rnode && rnode->addrs ) {
+        for ( a = rnode->addrs; a; a = a->next )
+            if ( !share_is_shared( &a->addr ))
+                return &a->addr;
+    }
+
+    /*
+     * Inbound with an empty list, or a shared dial target before
+     * the remote has presented a real address. calladdr may be NULL.
+     */
+    return calladdr;
+}
+
+
 static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
 {
     int rc, proto, xproto;
@@ -617,7 +650,7 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         if ( rc < 0)
             return S_REDIAL | S_ADDTRY;
 
-        title( "Outbound session %s", ftnaddrtoa( &rnode->addrs->addr ));
+        title( "Outbound session %s", ftnaddrtoa( session_id_addr( calladdr )));
 
         LOG_LOCK_NODE
 
@@ -653,9 +686,9 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
         write_log( "starting inbound EMSI session" );
 
         if (( t = getenv( "CALLER_ID" )) && strcasecmp( t, "none" ) && strlen( t ) > 3 )
-            title( "Inbound session %s (CID %s)", ftnaddrtoa( &rnode->addrs->addr ), t );
+            title( "Inbound session %s (CID %s)", ftnaddrtoa( session_id_addr( NULL )), t );
         else
-            title( "Inbound session %s", ftnaddrtoa( &rnode->addrs->addr ));
+            title( "Inbound session %s", ftnaddrtoa( session_id_addr( NULL )));
 
         LOG_LOCK_NODE
 
@@ -847,11 +880,11 @@ static int emsisession(int originator, ftnaddr_t *calladdr, int speed)
     }
 
     if ( cfgs( CFG_RUNONEMSI ) && *ccs ) {
-        write_log( "starting %s %s", ccs, 
-            rnode->addrs ? ftnaddrtoa( &rnode->addrs->addr ) : 
-            ( calladdr ? ftnaddrtoa( calladdr ) : "unknown" ));
-        execnowait( ccs, rnode->addrs ? ftnaddrtoa( &rnode->addrs->addr ) :
-            ( calladdr ? ftnaddrtoa( calladdr ) : "unknown" ), NULL, NULL );
+        const ftnaddr_t *id = session_id_addr( calladdr );
+        const char *ids = id ? ftnaddrtoa( id ) : "unknown";
+
+        write_log( "starting %s %s", ccs, ids );
+        execnowait( ccs, ids, NULL, NULL );
     }
 
     write_log( "we have: %d%c mail, %d%c files", SIZES( totalm ), SIZEC( totalm ),
@@ -1049,9 +1082,11 @@ static const char *binlog_result(int successful)
 /*
  * Write the binary log for this attempt, including one that died
  * before the handshake. Does not change rc, rnode->starttime, the
- * text history or the queue. A known FTN address is the remote's
- * first AKA, or the outbound call address. Otherwise the address
- * fields stay zero.
+ * text history or the queue. The address is the one session_id_addr()
+ * names. An outbound call that is not a shared AKA keeps the dialed
+ * address, presented or not. Otherwise it is the first presented
+ * address that is not shared, then the dialed address. With none of
+ * those the address fields stay zero.
  */
 static void binlog_flush(int rc, ftnaddr_t *calladdr)
 {
@@ -1075,10 +1110,7 @@ static void binlog_flush(int rc, ftnaddr_t *calladdr)
     if ( duration < 0 )
         duration = 0;
 
-    if ( rnode->addrs )
-        ba = &rnode->addrs->addr;
-    else if ( calladdr )
-        ba = calladdr;
+    ba = session_id_addr( calladdr );
 
     peer = binlog_peer();
     if ( !peer || !*peer )
@@ -1198,8 +1230,11 @@ int session(int originator, int type, ftnaddr_t *calladdr, int speed)
         (long) SIZES((long) ( sendf.toff - sendf.soff )), SIZEC( sendf.toff - sendf.soff ),
         (long) SIZES((long) ( recvf.toff - recvf.soff )), SIZEC( recvf.toff - recvf.soff ));
 
-    remote_id = xstrdup( rnode->addrs ? ftnaddrtoa( &rnode->addrs->addr ) 
-            : ( calladdr ? ftnaddrtoa( calladdr ): "unknown" ));
+    {
+        const ftnaddr_t *id = session_id_addr( calladdr );
+
+        remote_id = xstrdup( id ? ftnaddrtoa( id ) : "unknown" );
+    }
     ok_fail = (( rc & S_MASK ) == S_OK ) ? 1 : 0;
     in_out = ( rnode->options & O_INB ) ? 'I' : 'O';
     in_out_s = ( rnode->options & O_INB ) ? "I" : "O";
