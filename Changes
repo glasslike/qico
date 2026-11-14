@@ -1,5 +1,8 @@
 Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
+- fix [security] binkp: the CRAM challenge is read from
+  /dev/urandom. If that read fails, the time/pid mix is used
+  and logged.
 - fix binkp: `p' also blocks a clear password on our own call.
 - fix [security] binkp: fsync the completing block before M_GOT.
   A failed sync skips the file.
