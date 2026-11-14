@@ -1297,6 +1297,34 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
 
 
 /*
+ * The peer moved on while a file was still open: the next M_FILE, or
+ * M_EOB. A count that already matches the offer is a finished file
+ * (including an empty one, which never produces a data frame) and is
+ * published. Anything short stays in inbound/tmp. Publishing it would
+ * hand the tosser a truncated packet. FTS-1026 requires that partial
+ * to be kept unfinished, and it is not acknowledged.
+ */
+static void binkp_recv_abandon(BPS *bp, const char *why)
+{
+	if ( !bp->recv_file )
+		return;
+
+	if ( recvf.ftot >= 0 && bp->rxpos == (size_t) recvf.ftot )
+		rxclose( &rxfd, FOP_OK );
+	else {
+		write_log( "Binkp: \"%s\" closed unfinished (%lu of %lu), %s",
+			recvf.fname ? recvf.fname : "file",
+			(unsigned long) bp->rxpos,
+			(unsigned long) recvf.ftot,
+			why );
+		rxclose( &rxfd, FOP_SUSPEND );
+	}
+	bp->recv_file = 0;
+	qpfrecv();
+}
+
+
+/*
  * Process M_FILE command
  */
 static int M_file(BPS *bp, byte *arg)
@@ -1317,11 +1345,7 @@ static int M_file(BPS *bp, byte *arg)
 	bp->cls = 1;
 	bp->recv_eob = 0;
 
-	if ( bp->recv_file ) {
-		rxclose( &rxfd, FOP_OK );
-		bp->recv_file = 0;
-		qpfrecv();
-	}
+	binkp_recv_abandon( bp, "next file offered" );
 
 	parsed = file_parse( buf, &fname, &fsize, NULL, &time_tok, &foffs,
 		&size_tok, 1 );
@@ -1620,11 +1644,7 @@ static int M_eob(BPS *bp, byte *arg)
 	}
 	*/
 
-	if ( bp->recv_file ) {
-		rxclose( &rxfd, FOP_OK );
-		bp->recv_file = 0;
-		qpfrecv();
-	}
+	binkp_recv_abandon( bp, "end of batch" );
 
 	bp->recv_eob = 1;
 	bp->delay_eob = 0;
