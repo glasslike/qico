@@ -604,7 +604,8 @@ protorder	HJDZ1C
 # make sure you have properly working DNS.
 ;resolvehostname	yes
 
-# Binkp options:
+# Binkp options. Omitted, the default is MBM: CRAM-MD5 is offered
+# and a plaintext password is still accepted.
 # M - MD5 authentication
 # C - Crypt traffic
 # R - Not-Reliable mode

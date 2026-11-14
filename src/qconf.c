@@ -14,7 +14,7 @@ cfgstr_t configtab[CFG_NNN+1]={
 	{"autosuspend",C_STRL,0,NULL,NULL},
 	{"autoticskip",C_YESNO,0,NULL,"no"},
 	{"binkplisted",C_YESNO,0,NULL,"yes"},
-	{"binkpopt",C_STR,0,NULL,"MB"},
+	{"binkpopt",C_STR,0,NULL,"MBM"},
 	{"binlog",C_PATH,0,NULL,NULL},
 	{"bsooutbound",C_PATH,2,NULL,NULL},
 	{"callonflavors",C_STR,0,NULL,"NDCI"},
