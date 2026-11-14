@@ -1138,19 +1138,98 @@ static int binkp_hsdone(BPS *bp)
 
 
 /*
+ * Name stored under inbound for one M_FILE token.
+ *
+ * The token is what we echo in M_GOT / M_SKIP / M_GET, unchanged, so
+ * the sender can match the offer. This function only decides the
+ * single component rxopen() is given. FTS-1026 allows '/' and ':' in
+ * a file name; writing that string beside the inbound directory would
+ * leave the directory. "\" is the other separator on Windows.
+ *
+ * \xHH is decoded when both digits are hexadecimal. A short escape
+ * stays as text and is cleaned with the rest. An encoded NUL would
+ * hide the tail of the name, so the offer is refused. Only the last
+ * component of either slash is kept. Empty, "." and ".." are refused.
+ * A component that does not fit in the buffer we can pass to rxopen()
+ * is refused rather than cut. Controls, slash, backslash and colon
+ * inside the component become '_'.
+ *
+ * Returns 1 and a NUL-terminated name in dst. Returns 0 when the
+ * offer must not be opened.
+ */
+static int binkp_disk_name(const char *wire, char *dst, size_t dstsz)
+{
+	char		comp[MAX_PATH];
+	size_t		n = 0;
+	int		overflow = 0;
+	const unsigned char *s;
+
+	if ( !wire || !dst || dstsz < 2 )
+		return 0;
+
+	s = (const unsigned char *) wire;
+	while ( *s ) {
+		unsigned char c;
+
+		if ( s[0] == '\\' && ( s[1] == 'x' || s[1] == 'X' )
+			&& isxdigit( s[2] ) && isxdigit( s[3] )) {
+			c = (unsigned char) hexdcd( (char) s[2], (char) s[3] );
+			s += 4;
+		} else
+			c = *s++;
+
+		/* A decoded NUL ends C strings. The bytes after it would be dropped. */
+		if ( c == '\0' )
+			return 0;
+		if ( c == '/' || c == '\\' ) {
+			n = 0;
+			overflow = 0;
+			continue;
+		}
+		if ( overflow )
+			continue;
+		if ( n + 1 >= sizeof( comp ) || n + 1 >= dstsz ) {
+			overflow = 1;
+			continue;
+		}
+		comp[n++] = (char) c;
+	}
+
+	if ( overflow || n == 0 )
+		return 0;
+	comp[n] = '\0';
+	if ( strcmp( comp, "." ) == 0 || strcmp( comp, ".." ) == 0 )
+		return 0;
+
+	{
+		size_t i;
+
+		for ( i = 0; i < n; i++ ) {
+			unsigned char c = (unsigned char) comp[i];
+
+			if ( c < 32 || c == 127 || c == '/' || c == '\\' || c == ':' )
+				comp[i] = '_';
+		}
+	}
+
+	memcpy( dst, comp, n + 1 );
+	return 1;
+}
+
+
+/*
  * A sender that cannot delete a file offers it again after every M_GOT.
  * The third offer in a row of the same name and size drops the session.
  * A normal transfer is one offer. NR mode sends M_FILE twice, so one
  * further repeat ends it. A different name or size starts the count over.
+ * The name compared is the M_FILE token, the same string kept in rfname.
  */
 #define BINKP_REPEAT_MAX 3
 
 static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
 {
-	const char *base = qbasename( (char *) fname );
-
-	if ( bp->rfname && bp->rpt_size == fsize
-		&& !strncasecmp( base, bp->rfname, MAX_PATH ))
+	if ( bp->rfname && bp->rpt_size == fsize && fname
+		&& !strncasecmp( fname, bp->rfname, MAX_PATH ))
 		bp->rpt_cnt++;
 	else {
 		bp->rpt_cnt = 1;
@@ -1161,7 +1240,7 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
 		return 1;
 
 	write_log( "Binkp: %s (%ld bytes) offered %d times in a row, session dropped",
-		base, fsize, bp->rpt_cnt );
+		fname, fsize, bp->rpt_cnt );
 	binlog_set_result( "repeated file" );
 	msgs( BPM_ERR, "File offered too many times" );
 	bp->rc = S_FAILURE;
@@ -1175,8 +1254,8 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
 static int M_file(BPS *bp, byte *arg)
 {
 	char	*buf = (char *) arg, *fname = NULL, *time_tok = NULL, *wire;
+	char	disk[MAX_PATH];
 	long	fsize, foffs;
-	int	i, n;
 	time_t	local;
 
 	DEBUG(('B',3,"FILE %s", buf));
@@ -1231,17 +1310,22 @@ static int M_file(BPS *bp, byte *arg)
 	xfree( bp->rftime );
 	bp->rftime = wire;
 	bp->rmtime = local;
-	bp->rfname = xstrdup( qbasename( fname ));
+	/*
+	 * rfname is the token the peer sent. Replies quote it so the
+	 * sender's comparison succeeds. disk is the only name opened.
+	 */
+	bp->rfname = xstrdup( fname );
 
-	for( i = 0, n = 0; i < (int) strlen( fname ); ) {
-		if ( fname[i] == '\\' && tolower( xuchar( fname[i+1] )) == 'x' ) {
-			fname[n++] = hexdcd( fname[i+2], fname[i+3] );
-			i += 4;
-		} else
-			fname[n++] = fname[i++];
+	if ( !binkp_disk_name( fname, disk, sizeof( disk ))) {
+		write_log( "Binkp: file name \"%s\" is not a safe name, skipped", fname );
+		msgs( BPM_SKIP, "%s %lu %s", bp->rfname, (long) fsize,
+			bp->rftime ? bp->rftime : "0" );
+		return 1;
 	}
+	if ( strcmp( fname, disk ) != 0 )
+		write_log( "Binkp: file name \"%s\" stored as \"%s\"", fname, disk );
 
-	switch( rxopen( fname, local, fsize, &rxfd )) {
+	switch( rxopen( disk, local, fsize, &rxfd )) {
 	case FOP_ERROR:
 		write_log( "Binkp: error open file for write \"%s\"", recvf.fname );
 
