@@ -1310,18 +1310,36 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
  * The peer moved on while a file was still open: the next M_FILE, or
  * M_EOB. A count that already matches the offer is a finished file
  * (including an empty one, which never produces a data frame) and is
- * published. Anything short stays in inbound/tmp. Publishing it would
- * hand the tosser a truncated packet. FTS-1026 requires that partial
- * to be kept unfinished, and it is not acknowledged.
+ * published. The peer is told with M_GOT, the same way the last data
+ * block does it: otherwise the sender keeps the file and offers it
+ * again. Anything short stays in inbound/tmp and is not acknowledged.
+ * Publishing it would hand the tosser a truncated packet.
  */
 static void binkp_recv_abandon(BPS *bp, const char *why)
 {
+	char	tmp[512];
+
 	if ( !bp->recv_file )
 		return;
 
-	if ( recvf.ftot >= 0 && bp->rxpos == (size_t) recvf.ftot )
-		rxclose( &rxfd, FOP_OK );
-	else {
+	/*
+	 * Quote the token the peer sent. A disk name can differ, and the
+	 * sender matches this string against its offer.
+	 */
+	snprintf( tmp, sizeof( tmp ), "%s %lu %s",
+		bp->rfname ? bp->rfname : ( recvf.fname ? recvf.fname : "file" ),
+		(unsigned long) ( recvf.ftot < 0 ? 0 : recvf.ftot ),
+		bp->rftime ? bp->rftime : "0" );
+
+	if ( recvf.ftot >= 0 && bp->rxpos == (size_t) recvf.ftot ) {
+		if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
+			msgs( BPM_SKIP, "%s", tmp );
+			sline( "Binkp: file close error" );
+			write_log( "can't close %s, suspended",
+				recvf.fname ? recvf.fname : "file" );
+		} else
+			msgs( BPM_GOT, "%s", tmp );
+	} else {
 		write_log( "Binkp: \"%s\" closed unfinished (%lu of %lu), %s",
 			recvf.fname ? recvf.fname : "file",
 			(unsigned long) bp->rxpos,
