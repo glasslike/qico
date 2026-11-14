@@ -1982,8 +1982,10 @@ static int store_data(BPS *bp)
 	/*
 	 * fwrite() returns the number of members written, never -1.
 	 * A short write or a failed flush used to look like success
-	 * and could still produce M_GOT. Match binkd: require a full
-	 * write and a successful flush.
+	 * and could still produce M_GOT. The completing block is also
+	 * fsync'd before M_GOT, so a crash after the acknowledgement
+	 * does not lose the file. A failed sync skips the file instead
+	 * of acknowledging it. Intermediate blocks are flushed only.
 	 */
 	n = (int) fwrite( bp->rx_buf, 1, (size_t) bp->rx_size, rxfd );
 	if ( n != bp->rx_size || fflush( rxfd ) != 0 ) {
@@ -2006,6 +2008,14 @@ static int store_data(BPS *bp)
 			rxclose( &rxfd, FOP_SUSPEND );
 			msgs( BPM_SKIP, tmp );
 		} else if ( bp->rxpos == (int) recvf.ftot) {
+			if ( fsync( fileno( rxfd )) != 0 ) {
+				bp->recv_file = 0;
+				sline( "Binkp: file sync error" );
+				write_log( "can't sync %s, suspended", recvf.fname );
+				rxclose( &rxfd, FOP_ERROR );
+				msgs( BPM_SKIP, tmp );
+				return 1;
+			}
 			bp->recv_file = 0;
 			if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
 				msgs( BPM_SKIP, tmp );

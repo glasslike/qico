@@ -1,5 +1,7 @@
 Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
+- fix [security] binkp: fsync the completing block before M_GOT.
+  A failed sync skips the file.
 - fix [security] binkp: a short file stays in inbound/tmp and is
   not acknowledged. A complete count is still published.
 - fix [security] binkp: a size or offset that does not fit the
