@@ -997,9 +997,19 @@ static int M_adr(BPS *bp, byte *arg)
 			} else
 				msgs( BPM_PWD, "CRAM-MD5-%s", dig );
 			xfree( dig );
-		} else if ( bp->opt_md == O_YES ) {
-			msgs( BPM_ERR, "Can't use plaintext password" );
-			bp->rc = S_FAILURE|S_ADDTRY;
+		} else if ( bp->opt_md & O_NEED ) {
+			/*
+			 * binkpopt 'p' forces a digest on our call as well as
+			 * on an answer. O_YES is only set after a challenge
+			 * has been stored, so testing it here never fired and
+			 * the password went out in clear. Same refusal the
+			 * answering side already sends.
+			 */
+			log_rinfo( rnode );
+			write_log( "Remote does not support MD5" );
+			binlog_set_result( "no MD5" );
+			msgs( BPM_ERR, "You must support MD5" );
+			bp->rc = S_FAILURE | S_ADDTRY;
 			return 0;
 		} else
 			msgs( BPM_PWD, "%s", rem_pwd );
