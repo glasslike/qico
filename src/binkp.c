@@ -60,6 +60,7 @@
  */
 
 #include "headers.h"
+#include <limits.h>
 #ifdef WITH_BINKP
 
 #ifdef HAVE_SYS_SOCKET_H
@@ -335,6 +336,32 @@ static int binkp_dec_u64(const char *s, unsigned long long *out)
 }
 
 
+/*
+ * Size or offset for a file this mailer can count.
+ *
+ * pfile_t.ftot and the receive position are ints, so a value past
+ * INT_MAX would wrap and M_GOT could fire early. Digits only, no
+ * sign, except the NR resume request: M_FILE offset "-1" asks the
+ * receiver where to continue. Returns 1, or 0 when the token is
+ * empty, not decimal, or too big.
+ */
+static int binkp_dec_counter(const char *s, long *out, int allow_resume)
+{
+	unsigned long long v;
+
+	if ( allow_resume && s && strcmp( s, "-1" ) == 0 ) {
+		*out = -1;
+		return 1;
+	}
+	if ( !binkp_dec_u64( s, &v ))
+		return 0;
+	if ( v > (unsigned long long) INT_MAX )
+		return 0;
+	*out = (long) v;
+	return 1;
+}
+
+
 /* Decimal digits. Old printf has no %llu. */
 static void binkp_put_u64(char *dst, size_t n, unsigned long long v)
 {
@@ -506,9 +533,22 @@ static char *binkp_reply_time(const char *token, time_t *local)
 }
 
 
-static int file_parse(void *s, char **fn, long *sz, time_t *tm, char **time_tok, long *offs)
+/*
+ * Split an M_FILE / M_GET / M_GOT argument list.
+ *
+ * Returns 1 when the fields are present and the size (and offset,
+ * when requested) fit in the receive counter. Returns 0 when the
+ * list is missing a field: the caller aborts, there is no file to
+ * name. Returns -1 when a number is junk or does not fit. The name
+ * and the original size and time tokens are still set, so the caller
+ * can skip that file and keep the session. allow_resume permits the
+ * M_FILE offset "-1" and nothing else negative.
+ */
+static int file_parse(void *s, char **fn, long *sz, time_t *tm, char **time_tok,
+	long *offs, char **size_tok, int allow_resume)
 {
 	char *n = (char *) s, *name, *size, *time, *off = NULL;
+	long size_n, off_n;
 
 	DEBUG(('B',4,"pars: in '%s'",n));
 	name = strsep( &n, " " );
@@ -520,21 +560,29 @@ static int file_parse(void *s, char **fn, long *sz, time_t *tm, char **time_tok,
 
 	DEBUG(('B',4,"pars: name=%s, size=%s, time=%s, offs=%s",
 		name, size, time, off));
-	if ( name && size && time && ( !offs || off )) {
-		*fn = name;
-		*sz = atol( size );
-		/* atol() does not turn the unsigned spelling into the negative time. */
-		if ( tm && !binkp_read_time( time, tm ))
-			*tm = (time_t) atol( time );
-		if ( time_tok )
-			*time_tok = time;
-		if ( offs )
-			*offs = atol( off );
-		DEBUG(('B',3,"pars: name=%s, size=%lu, time=%s, offs=%ld",
-			*fn, *sz, time, offs ? *offs : -3l ));
-		return 1;
+	if ( !( name && size && time && ( !offs || off )))
+		return 0;
+
+	*fn = name;
+	if ( time_tok )
+		*time_tok = time;
+	if ( size_tok )
+		*size_tok = size;
+
+	if ( !binkp_dec_counter( size, &size_n, 0 ))
+		return -1;
+	*sz = size_n;
+	/* binkp_read_time() accepts the unsigned spelling of a negative time. */
+	if ( tm && !binkp_read_time( time, tm ))
+		*tm = (time_t) atol( time );
+	if ( offs ) {
+		if ( !binkp_dec_counter( off, &off_n, allow_resume ))
+			return -1;
+		*offs = off_n;
 	}
-	return 0;
+	DEBUG(('B',3,"pars: name=%s, size=%lu, time=%s, offs=%ld",
+		*fn, *sz, time, offs ? *offs : -3l ));
+	return 1;
 }
 
 
@@ -1253,9 +1301,10 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
  */
 static int M_file(BPS *bp, byte *arg)
 {
-	char	*buf = (char *) arg, *fname = NULL, *time_tok = NULL, *wire;
+	char	*buf = (char *) arg, *fname = NULL, *time_tok = NULL, *size_tok = NULL, *wire;
 	char	disk[MAX_PATH];
 	long	fsize, foffs;
+	int	parsed;
 	time_t	local;
 
 	DEBUG(('B',3,"FILE %s", buf));
@@ -1274,13 +1323,33 @@ static int M_file(BPS *bp, byte *arg)
 		qpfrecv();
 	}
 
-	if ( !file_parse( buf, &fname, &fsize, NULL, &time_tok, &foffs )) {
+	parsed = file_parse( buf, &fname, &fsize, NULL, &time_tok, &foffs,
+		&size_tok, 1 );
+	if ( parsed == 0 ) {
 		msgs( BPM_ERR, "M_FILE: unparsable file info: \"%s\"", buf );
 		write_log( "Binkp: got unparsable file info: \"%s\"", buf );
 		if ( bp->send_file )
 			txclose( &txfd, FOP_ERROR );
 		bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
 		return 0;
+	}
+	/*
+	 * A number that does not fit is this file only. The session
+	 * stays up. The skip quotes the tokens the peer sent, so a
+	 * sender that parsed them can drop the offer. Data frames that
+	 * still arrive have recv_file clear and are ignored.
+	 */
+	if ( parsed < 0 ) {
+		write_log( "Binkp: \"%s\" size or offset is not usable, skipped",
+			fname );
+		if ( !binkp_repeat_limit( bp, fname, -1 ))
+			return 0;
+		xfree( bp->rfname );
+		bp->rfname = xstrdup( fname );
+		msgs( BPM_SKIP, "%s %s %s", bp->rfname,
+			size_tok ? size_tok : "0",
+			time_tok ? time_tok : "0" );
+		return 1;
 	}
 
 	if ( !binkp_repeat_limit( bp, fname, fsize ))
@@ -1619,14 +1688,20 @@ static int M_get(BPS *bp, byte *arg)
 	char	*buf = (char *) arg, *fname;
 	char	tbuf[32];
 	long	fsize, foffs;
+	int	parsed;
 	time_t	ftime;
 
 	DEBUG(('B',3,"GET %s", buf));
 
 	if ( !bp_xfer_ok( bp, "M_GET" ))
 		return 0;
-    
-	if ( file_parse( buf, &fname, &fsize, &ftime, NULL, &foffs )) {
+
+	parsed = file_parse( buf, &fname, &fsize, &ftime, NULL, &foffs, NULL, 0 );
+	if ( parsed < 0 ) {
+		write_log( "Binkp: M_GET size or offset is not usable, ignored" );
+		return 1;
+	}
+	if ( parsed ) {
 		if ( bp->send_file && sendf.fname
 			&& !strncasecmp( fname,sendf. fname, MAX_PATH)
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
@@ -1660,6 +1735,7 @@ static int M_gotskip(BPS *bp, byte *arg)
 	char 	*buf = (char *) arg;
 	char 	*fname;
 	int 	id = *bp->rx_buf;
+	int	parsed;
 	long 	fsize;
 	time_t	ftime;
 
@@ -1668,7 +1744,12 @@ static int M_gotskip(BPS *bp, byte *arg)
 	if ( !bp_xfer_ok( bp, mess[id] ))
 		return 0;
 
-	if ( file_parse( buf, &fname, &fsize, &ftime, NULL, NULL )) {
+	parsed = file_parse( buf, &fname, &fsize, &ftime, NULL, NULL, NULL, 0 );
+	if ( parsed < 0 ) {
+		write_log( "Binkp: M_%s size is not usable, ignored", mess[id] );
+		return 1;
+	}
+	if ( parsed ) {
         	if ( sendf.fname && !strncasecmp( fname, sendf.fname, MAX_PATH )
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
 		{

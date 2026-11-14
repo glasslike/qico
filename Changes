@@ -1,5 +1,8 @@
 Version 0.60.4-dev
 ~~~~~~~~~~~~~~~~~~
+- fix [security] binkp: a size or offset that does not fit the
+  receive counter is skipped. The batch continues. M_FILE "-1"
+  is unchanged.
 - fix [security] binkp: a received name is stored as one inbound
   component. Replies quote the original M_FILE token. NUL, an
   empty name, "." and ".." are skipped.
