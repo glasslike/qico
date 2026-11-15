@@ -1,3 +1,7 @@
+Version 0.60.5-dev
+~~~~~~~~~~~~~~~~~~
+
+
 Version 0.60.4
 ~~~~~~~~~~~~~~
 - binkp: default binkpopt is MBM. CRAM-MD5 is offered;
