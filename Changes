@@ -1,5 +1,5 @@
-Version 0.60.4-dev
-~~~~~~~~~~~~~~~~~~
+Version 0.60.4
+~~~~~~~~~~~~~~
 - binkp: default binkpopt is MBM. CRAM-MD5 is offered;
   plaintext is still accepted unless `p' is set.
 - fix [security] config: a password starting with CRAM- is
