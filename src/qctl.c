@@ -102,6 +102,7 @@ static char buf[MSG_BUFFER];
 
 static void usage(char *ex)
 {
+    u_banner( "qctl, a control tool for qico" );
     printf( "usage: %s [<options>] [<nodes>] [<files>]\n"
           "<nodes>        must be in ftn-style (i.e. zone:net/node[.point])\n"
           "-h             this help screen\n"

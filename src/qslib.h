@@ -51,6 +51,12 @@ extern	char version[];
 extern	char version_id[];
 /* UTC source stamp from ./configure (git commit date, or make dist fallback). */
 extern	char cvsdate[];
+/*
+ * https URL of the repository this binary was built from, or "".
+ * ./configure reads the checkout's origin (see configure.ac). -h and -v
+ * print it; an empty string means those lines are left out.
+ */
+extern	char source_url[];
 extern	char *osname;
 
 /*
@@ -154,5 +160,8 @@ void	setproctitle(const char *, ...);
 #endif /* !HAVE_SETPROCTITLE */
 
 void	u_vers(const char *);
+/* One-line description, then source_url when configure recorded one,
+ * then a blank line. The top of qico/qcc/qctl -h. */
+void	u_banner(const char *);
 
 #endif

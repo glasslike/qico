@@ -110,6 +110,7 @@ char progname[] = PACKAGE_NAME;
 
 static void usage(char *ex)
 {
+    u_banner( "qico, an ftn compatible mailer" );
     printf( "usage: %s [<options>] [<node>]\n", ex );
     puts( "<node>       must be in ftn-style (i.e. zone:net/node[.point])!\n"
           "-h           this help screen\n"

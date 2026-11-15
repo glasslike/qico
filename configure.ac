@@ -786,6 +786,89 @@ AC_DEFINE_UNQUOTED([QICO_VERSION_ID], ["$QICO_VERSION_ID"],
 	[Package version, with -g and the git abbreviation on a -dev build])
 AC_SUBST([QICO_GIT_ABBREV])
 
+dnl Repository URL for qico/qcc/qctl -h and -v. Taken from this checkout's
+dnl origin, or from the first remote when origin is unset, so a fork prints
+dnl its own address rather than upstream's. git@host:path and ssh/git/https
+dnl forms become https://host/path, with a trailing .git and any userinfo
+dnl removed. A token in an https URL must not be compiled into the binary.
+dnl A GitHub zip, or a tree with no remote, leaves this empty and the
+dnl programs then omit the line. "make dist" stores the result in
+dnl src/source-url for a later configure that has no .git.
+AC_MSG_CHECKING([source repository URL])
+QICO_SOURCE_URL=
+_qico_raw=
+if test -d "$srcdir/.git" || test -f "$srcdir/.git"; then
+	if (cd "$srcdir" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
+		_qico_raw=`cd "$srcdir" && git config --get remote.origin.url 2>/dev/null`
+		if test -z "$_qico_raw"; then
+			_qico_remote=`cd "$srcdir" && git remote 2>/dev/null | sed -n 1p`
+			if test -n "$_qico_remote"; then
+				_qico_raw=`cd "$srcdir" && git config --get "remote.${_qico_remote}.url" 2>/dev/null`
+			fi
+			unset _qico_remote
+		fi
+	fi
+fi
+if test -z "$_qico_raw" && test -f "$srcdir/src/source-url"; then
+	_qico_raw=`tr -d '\r\n' < "$srcdir/src/source-url"`
+fi
+dnl A Windows checkout can leave a CR on git config output. Drop it before
+dnl the shape checks, which treat CR as "not a URL".
+_qico_raw=`printf '%s' "$_qico_raw" | tr -d '\r\n'`
+dnl Trailing slashes first, then a trailing .git, then slashes again.
+dnl *.git does not match a URL that still ends in /.
+while :; do
+	case "$_qico_raw" in
+		*/) _qico_raw=`expr "$_qico_raw" : '\(.*\)/'` || _qico_raw= ;;
+		*) break ;;
+	esac
+done
+case "$_qico_raw" in
+	*.git) _qico_raw=`expr "$_qico_raw" : '\(.*\)\.git'` || _qico_raw= ;;
+esac
+while :; do
+	case "$_qico_raw" in
+		*/) _qico_raw=`expr "$_qico_raw" : '\(.*\)/'` || _qico_raw= ;;
+		*) break ;;
+	esac
+done
+_qico_host=
+_qico_path=
+case "$_qico_raw" in
+	git@*:*)
+		_qico_host=`expr "$_qico_raw" : 'git@\([[^:]]*\):'` || _qico_host=
+		_qico_path=`expr "$_qico_raw" : 'git@[[^:]]*:\(.*\)'` || _qico_path=
+		;;
+	*://*)
+		_qico_rest=`expr "$_qico_raw" : '.*://\(.*\)'` || _qico_rest=
+		case "$_qico_rest" in
+			*@*) _qico_rest=`expr "$_qico_rest" : '.*@\(.*\)'` || _qico_rest= ;;
+		esac
+		_qico_host=`expr "$_qico_rest" : '\([[^/]]*\)'` || _qico_host=
+		_qico_path=`expr "$_qico_rest" : '[[^/]]*/\(.*\)'` || _qico_path=
+		case "$_qico_host" in
+			*:*) _qico_host=`expr "$_qico_host" : '\([[^:]]*\)'` || _qico_host= ;;
+		esac
+		;;
+esac
+dnl Host is a DNS name. Path is the rest of a repository URL. Anything
+dnl else, including a quote or a backslash, would break the C string in
+dnl config.h, so the URL is dropped and -h/-v stay without a link.
+case "$_qico_host" in
+	""|*[[!A-Za-z0-9.-]]*|.*|*.|*-) ;;
+	*)
+		case "$_qico_path" in
+			""|*[[!A-Za-z0-9._~+/-]]*) ;;
+			*) QICO_SOURCE_URL="https://${_qico_host}/${_qico_path}" ;;
+		esac
+		;;
+esac
+unset _qico_raw _qico_host _qico_path _qico_rest
+AC_MSG_RESULT([${QICO_SOURCE_URL:-none}])
+AC_DEFINE_UNQUOTED([QICO_SOURCE_URL], ["$QICO_SOURCE_URL"],
+	[https URL of the checkout this build was made from, or empty])
+AC_SUBST([QICO_SOURCE_URL])
+
 
 dnl add warn flags in maintainer mode
 dnl -fcommon: required for GCC 10+ / Debian 12+ where -fno-common is the

@@ -313,6 +313,7 @@ void write_log(char *str, ...)
 
 static void usage(char *ex)
 {
+	u_banner( "qcc, an ncurses frontend for qico" );
 	printf("usage: %s [options]\n"
                "-P port      connect to <port> (default: qicoui or %u)\n"
 	       "-a host      connect to <host> (default: localhost)\n"

@@ -68,6 +68,14 @@ char version_id[] = QICO_VERSION_ID;
 #endif
 char cvsdate[] = QICO_SOURCE_DATE;
 
+/* Repository link for -h and -v. Empty when configure found no remote
+ * (a release zip, or a copy that is not a checkout). An old config.h
+ * from before this define keeps the line omitted. */
+#ifndef QICO_SOURCE_URL
+#define QICO_SOURCE_URL ""
+#endif
+char source_url[] = QICO_SOURCE_URL;
+
 char *hexdigitslower = "0123456789abcdef";
 char *hexdigitsupper = "0123456789ABCDEF";
 char *hexdigitsall = "0123456789abcdefABCDEF";
@@ -798,5 +806,17 @@ void u_vers(const char *progn)
 		"unknown"
 #endif
 		"\n");
+	/* Same link as -h. Omitted when this build had no repository URL. */
+	if ( source_url[0] )
+		puts( source_url );
 	exit( 0 );
+}
+
+
+void u_banner(const char *blurb)
+{
+	puts( blurb );
+	if ( source_url[0] )
+		puts( source_url );
+	putchar( '\n' );
 }
