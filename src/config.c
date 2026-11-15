@@ -168,7 +168,7 @@ static int getfasl(faslist_t **to, const char *from)
 
 static int getyesno(int *to, const char *from)
 {
-	switch( tolower( *from )) {
+	switch( tolower( xuchar( *from ))) {
 	case 'y':
 	case 't':
 	case '1':
@@ -435,7 +435,7 @@ contl:
         p = s;
 
         if ( verbose_config )
-            printf( "** cfg line: %d: '%s', len = %-4d\n", line, p, strlen( s ));
+            printf( "** cfg line: %d: '%s', len = %-4lu\n", line, p, (unsigned long) strlen( s ));
 
         t = p + strlen( p ) - 1;
 
@@ -447,7 +447,7 @@ contl:
         }
 
         if ( *p != '{' ) {
-            if ( *p == '$' && isgraph( p[1] ))
+            if ( *p == '$' && isgraph( xuchar( p[1] )))
                 if (( k = strchr( p, '=' )))
                     *k = ' ';
             /*
@@ -472,7 +472,7 @@ contd:
             char *en = NULL;
             aslist_t *as;
 
-            for(; *e && isgraph( *e ) && *e != ')'; e++ );
+            for(; *e && isgraph( xuchar( *e )) && *e != ')'; e++ );
 
             if ( *e == ')' ) {
                 *e++ = 0;
@@ -503,7 +503,7 @@ contd:
             }
         }
 
-        if ( *p== '$' && isgraph( p[1] ))  /* Found new define */
+        if ( *p== '$' && isgraph( xuchar( p[1] )))  /* Found new define */
             aslist_add( &defs, p + 1, t );
         else if ( !strcasecmp( p, "include" )) {
             if(!strncmp(cfgname,t,MAX_STRING)) {
@@ -670,6 +670,22 @@ int readconfig(const char *cfgname)
                 ci->value.v_char ? ci->value.v_char : "");
             rc=0;
         }
+    /*
+     * FTS-1027: a password that begins with CRAM- cannot be told from
+     * a CRAM response, and the wire compare is case-insensitive.
+     * Every copy is checked, including values inside if, so a later
+     * condition cannot arm one. The secret itself is not logged.
+     */
+    for(ci=configtab[CFG_PASSWORD].items;ci;ci=ci->next) {
+        faslist_t *pw;
+
+        for(pw=ci->value.v_fasl;pw;pw=pw->next)
+            if(pw->str && !strncasecmp(pw->str, "CRAM-", 5)) {
+                write_log("keyword 'password' for %s must not start with CRAM-",
+                    ftnaddrtoa(&pw->addr));
+                rc=0;
+            }
+    }
     /* asooutbound/bsooutbound are nonif but not each-required; one of
      * them must be set or outbound_init() has nothing to scan. */
     if(!cfgs(CFG_ASOOUTBOUND) && !cfgs(CFG_BSOOUTBOUND)) {

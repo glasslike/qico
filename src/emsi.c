@@ -476,7 +476,7 @@ void emsi_makedat(ftnaddr_t *remaddr, unsigned long mail, unsigned long files,
 
 	if ( !( lopt & P_NCP )) {
 		while( *p ) {
-			switch(toupper(*p++)) {
+			switch(toupper(xuchar(*p++))) {
 			case '1':
 				EMSI_CAT( "ZMO," );
 				c = 1;
@@ -596,7 +596,7 @@ static void emsi_banner(void)
 
 	snprintf( banner, MAX_STRING, "+ Address %s using %s v%s [%s]",
 		addr->d ? ftnaddrtoda( addr ) : ftnaddrtoa( addr ),
-		progname, version, cvsdate );
+		progname, version_id, cvsdate );
 
 	sline( "Sending EMSI_REQ..." );
 	DEBUG(('E',1,"EI: Sending EMSI_REQ"));

@@ -367,7 +367,7 @@ int main(int argc, char **argv, char **envp)
                 daemon = DM_CALL;
                 str = optarg;
                 while( str && *str ) {
-                    switch( tolower( *str )) {
+                    switch( tolower( xuchar( *str ))) {
                         case 'n':
                             call_flags = FC_NORMAL; break;
                         case 'i':

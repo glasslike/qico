@@ -93,6 +93,7 @@ char *ndl_errors[] = {
 	"Can't open nodelist",
 	"Can't query nodelist",
 	"Nodelist index needs recompiling",
+	"Nodelist index path is too long",
 	NULL
 	};
 
@@ -100,6 +101,7 @@ char *ndl_errors[] = {
 static int comp_addrie(const void *a, const void *b);
 static int comp_idxent(const void *a, const void *b);
 static int ndl_ext(const char *s);
+static int ndl_index_paths_fit(const char *path);
 static int ndl_open(void);
 static void ndl_close(void);
 static int ndl_get_list_name(int index, char *list);
@@ -179,6 +181,26 @@ static int ndl_ext(const char *s)
 
 
 /*
+ * nlpath is used whole. A copied prefix would lock or open a different
+ * file, so both the index name and the longer lock name have to fit
+ * before either is used. Returns 0 when they do not.
+ */
+static int ndl_index_paths_fit(const char *path)
+{
+	char	nlock[MAX_PATH + 5];
+	char	nidx[MAX_PATH + 5];
+
+	if ( !path || strlen( path ) >= MAX_PATH )
+		return 0;
+	if ( !pathfit( nlock, sizeof( nlock ), path, ndl_idx, ".lock" ))
+		return 0;
+	if ( !pathfit( nidx, sizeof( nidx ), path, ndl_idx, NULL ))
+		return 0;
+	return 1;
+}
+
+
+/*
  * Opens nodelist index and loads index data. Returns 1 on success.
  */
 static int ndl_open(void)
@@ -194,6 +216,13 @@ static int ndl_open(void)
 
 	if ( !cfgs( CFG_NLPATH ))
 		return NDL_ENOPATH;			/* No nlpath defined */
+
+	/*
+	 * Checked before the lock. A name that does not fit used to come
+	 * back as NDL_ELOCKED, which sent callers looking for a lock file.
+	 */
+	if ( !ndl_index_paths_fit( ccs ))
+		return -(NDL_EPATHLONG);
 
 	xstrcpy( ndlpath, ccs, MAX_PATH );
 	
@@ -423,7 +452,8 @@ static int ndl_lock(const char *path, int lock)
 {
 	char nlock[MAX_PATH + 5];
 
-	snprintf( nlock, MAX_PATH, "%s%s.lock", path, ndl_idx );
+	if ( !pathfit( nlock, sizeof( nlock ), path, ndl_idx, ".lock" ))
+		return lock == NDL_CHK_LOCK;
 
 	switch( lock ) {
 	case NDL_CHK_LOCK:
@@ -937,7 +967,6 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 {
 	int		ptr;
 	char		ndl_str[MAX_STRING + 5], *p, *t;
-	idx_t		*ndl_i;
 	ninfo_t		*nlent;
 	ndl_field_t	field = NDL_STATUS;
 
@@ -945,8 +974,6 @@ static int ndl_query(const ftnaddr_t *addr, ninfo_t **nl)
 
 	if ( nodelist_index == NULL && ( ptr = ndl_open()) < 1 )
 		return ptr;
-
-	ndl_i = nodelist_index;
 
 	DEBUG(('N',2,"ndl_query: nodelist_index %.8p",nodelist_index));
 
@@ -1080,6 +1107,15 @@ static int ndl_compile(void)
 		return 0;
 	}
 
+	/*
+	 * Same check as ndl_open(). Taking the lock first reported a
+	 * path that does not fit as "Nodelist index is locked".
+	 */
+	if ( !ndl_index_paths_fit( ccs )) {
+		ndl_log( "Nodelist index path is too long" );
+		return 0;
+	}
+
 	xstrcpy( npath, ccs, MAX_PATH );
 	chopc( npath, '/' );
 
@@ -1088,7 +1124,11 @@ static int ndl_compile(void)
 		return 0;
 	}
 
-	snprintf( nidx, MAX_PATH, "%s%s", npath, ndl_idx );
+	if ( !pathfit( nidx, sizeof( nidx ), npath, ndl_idx, NULL )) {
+		ndl_log( "Nodelist index path is too long" );
+		ndl_lock( npath, NDL_UNLOCK );
+		return 0;
+	}
 	if ( !( idx = fopen( nidx, "wb" ))) {
 		ndl_log( "Can't open nodelist index %s for writing: %s",
 			nidx, strerror( errno ));
@@ -1127,7 +1167,7 @@ static int ndl_compile(void)
 #endif
 
 		if ( !strcmp( s + strlen( s ) - 4, ".999" )) {
-			int		num;
+			int		num, skipped_long = 0;
 			time_t		mtime = 0;
 			DIR		*d;
 			struct dirent	*de;
@@ -1156,7 +1196,12 @@ static int ndl_compile(void)
 						char	_n[MAX_PATH + 5];
 						time_t	_mtime = 0;
 
-						snprintf( _n, MAX_PATH, "%s/%s", nidx, de->d_name );
+						if ( !pathfit( _n, sizeof( _n ), nidx, "/", de->d_name )) {
+							ndl_log( "Nodelist path is too long: %s/%s",
+								nidx, de->d_name );
+							skipped_long = 1;
+							continue;
+						}
 						if ( !stat( _n, &sb ))
 							_mtime = sb.st_mtime;
 
@@ -1183,12 +1228,17 @@ static int ndl_compile(void)
 			
 			closedir( d );
 
-			if ( max < 0 )
-				ndl_log( "No lists matching %s/%s.[0-9] found", nidx, s );
-			else
-				snprintf( nodelist, MAX_PATH, "%s/%s", nidx, nlmax );
-		} else
-			snprintf( nodelist, MAX_PATH, "%s/%s", nidx, s );
+			if ( max < 0 ) {
+				if ( !skipped_long )
+					ndl_log( "No lists matching %s/%s.[0-9] found", nidx, s );
+			} else if ( !pathfit( nodelist, sizeof( nodelist ), nidx, "/", nlmax )) {
+				ndl_log( "Nodelist path is too long: %s/%s", nidx, nlmax );
+				nodelist[0] = '\0';
+			}
+		} else if ( !pathfit( nodelist, sizeof( nodelist ), nidx, "/", s )) {
+			ndl_log( "Nodelist path is too long: %s/%s", nidx, s );
+			nodelist[0] = '\0';
+		}
 
 		if ( !nodelist[0] )
 			continue;
@@ -1716,7 +1766,7 @@ static int chktxy(const char *p)
 		char *c = (char *)(p + 1);
 
 		while( *c ) {
-			char t = tolower( *c++ );
+			char t = tolower( xuchar( *c++ ));
 			if ( t < 'a' || t > 'x' )
 				return 0;
 		}
@@ -1784,7 +1834,7 @@ static int parsetime(const char *tstr, int *day, int *hour, int *min)
 	*hour = atoi( s );
 
 	s = strchr( s, ':' );
-	*min = ( s && isdigit(*(s + 1))) ? atoi( s + 1 ) : 0;
+	*min = ( s && isdigit( xuchar( *(s + 1) ))) ? atoi( s + 1 ) : 0;
 
 	DEBUG(('N',3,"parsetime: %d, %d, %d", *day, *hour, *min));
 	return 1;

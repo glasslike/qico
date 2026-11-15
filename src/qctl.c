@@ -244,7 +244,7 @@ int main(int argc, char **argv,char **envp)
             break;
         case 's':
             action=QR_SEND;
-            flv=toupper(*optarg);
+            flv=toupper(xuchar(*optarg));
             if(strchr("0123456789:./",flv)) {
                 flv='?';
                 optind--;
@@ -255,7 +255,7 @@ int main(int argc, char **argv,char **envp)
             break;
         case 'p':
             action=QR_POLL;
-            flv=toupper(*optarg);
+            flv=toupper(xuchar(*optarg));
             if(strchr("0123456789:./",flv)) {
                 flv='?';
                 optind--;

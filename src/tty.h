@@ -142,6 +142,7 @@ typedef struct sgttyb TIO;
 #define ME_FLAGS	9
 #define ME_NOTATT	10
 #define ME_NODSR	11
+#define ME_LOCKNAME	12
 
 #define GETCHAR(t)		tty_getc( t )
 #define GETCHART(t)		tty_getc_timed( t )
@@ -166,7 +167,7 @@ typedef struct sgttyb TIO;
 #define EWBOEA()	(( errno == EWOULDBLOCK || errno == EAGAIN ))
 
 #define LCK_NAME(name, port) \
-	snprintf(name, MAX_PATH, "%s/LCK..%s", cfgs(CFG_LOCKDIR), port )
+	pathfit((name), sizeof(name), cfgs(CFG_LOCKDIR), "/LCK..", (port))
 
 extern char *tty_errs[];
 /* extern char canistr[]; */

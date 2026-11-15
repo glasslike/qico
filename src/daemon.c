@@ -304,7 +304,10 @@ static void daemon_evt(int chld,char *buf,int rc,int mode)
 		char fname[MAX_PATH];
 		DEBUG(('I',2,"client %d: request hangup line '%s'",uis->id,buf+3));
 		sendrpkt(0,chld,"");
-		LCK_NAME(fname,buf+3);
+		if ( !LCK_NAME( fname, buf + 3 )) {
+			write_log( "lock name too long for port %s", buf + 3 );
+			break;
+		}
 		if((f=fopen(fname,"r"))) {
 			fscanf(f,"%d",&pid);
 			fclose(f);

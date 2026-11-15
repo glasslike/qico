@@ -226,7 +226,9 @@ NULL
 #ifdef WITH_QCC_BINLOG
 /* Shown only while the history view is up. The master hint has no room. */
 static char *hh[]={
+	"F1",", ",
 	"L","eave, ",
+	"A","ll/","Z","eroes/","F","ailed only, ",
 	"Up","/","Dn",", ",
 	"PgUp","/","PgDn",", ",
 	"Q","uit",
@@ -235,7 +237,7 @@ NULL
 #endif
 
 static char *help[]={
-	"\01* qico control center %s, sisoft\\\\trg edition. help about keys:",
+	"\01* qico control center %s keys:",
 	"\01 All windows: F10 - quit, Tab/Right - next and Left - previous window",
 	"\01 Main window:                  Line window:                Chat window:",
 	"\01  F1 - help,  q - quit          q - quit,  p - poll         Esc - close chat",
@@ -285,6 +287,7 @@ void write_log(char *str, ...)
     tim = time( NULL );
     t = localtime( &tim );
     getyx( wlog, y, x );
+    (void) y;
     wattron( wlog, A_BOLD );
     if ( x )
         waddch( wlog, '\n' );
@@ -712,6 +715,8 @@ static void freshhelp(void)
 		}
 	}
 	wattron(whelp,COLOR_PAIR(10));
+	/* Package version only. The dev commit is version_id, used by -v
+	 * and by the mailer when it talks to the other node, not here. */
 	mvwprintw(whelp,0,COL-4-strlen(version),"qcc-%s",version);
 }
 
@@ -751,11 +756,12 @@ static void freshstatus(void)
 
 static char *timestr(time_t tim)
 {
-	static char ts[10];
+	/* A full long hour count is wider than the old 10-byte field. */
+	static char ts[64];
 	long int hr;
 	if(tim<0) tim=0;
 	hr=tim/3600;
-	snprintf(ts,10,"%02ld:%02ld:%02ld",hr,tim/60-hr*60,tim%60);
+	snprintf(ts,sizeof(ts),"%02ld:%02ld:%02ld",hr,tim/60-hr*60,tim%60);
 	return ts;
 }
 
@@ -844,6 +850,7 @@ static void logit(char *str,WINDOW *w,int s)
 
 	if(s>=0)cu=(slots[s]->lm==slots[s]->lc);
 	getyx(w,y,x);
+	(void)y;
 	if(cu&&x)waddch(w,'\n');
 	if(cu) {
 		scrollok(w,FALSE);
@@ -923,7 +930,8 @@ static void freshqueue(void)
 		waddstr(wmain,q->addr);
 		for(k=0;k<COL-24-Q_MAXBIT-strlen(q->addr);k++)waddch(wmain,' ');
 		snprintf(str,MAX_STRING," %5lu%c %6lu%c  %3d  ",
-		    SIZES(q->mail),SIZEC(q->mail),SIZES(q->files),SIZEC(q->files),q->try);
+		    (unsigned long)SIZES(q->mail),SIZEC(q->mail),
+		    (unsigned long)SIZES(q->files),SIZEC(q->files),q->try);
 		waddstr(wmain,str);
 		for(k=0,l=1;k<Q_MAXBIT;k++) {
 			if(q_pos!=q->n)wattron(wmain,COLOR_PAIR(qclrs[k]));
@@ -1022,7 +1030,9 @@ static int inputstr(char *str, char *name, int mode)
 	edm=1;freshhelp();wnoutrefresh(whelp);
 	ms=mode?(mode==1?40:5):(MAX_STRING-2);
 	if(ms<strlen(name))ms=strlen(name)+1;
-	if((ms+2)>COL)ms=COL-2;vl=ms-1;
+	if((ms+2)>COL)
+		ms=COL-2;
+	vl=ms-1;
 	yp=LINES/2-2;if(yp<=MH)yp=MH+1;
 	iw=newwin(3,ms+2,yp,COL/2-ms/2);
 	wbkgd(iw,COLOR_PAIR(8)|' ');
@@ -1088,7 +1098,8 @@ static int inputstr(char *str, char *name, int mode)
 							}
 						} else if(cp)cp--;
 					    } else {
-						strncpy(str+sp,str+sp+1,sl-sp);
+						/* Source and destination overlap. strncpy is undefined here. */
+						memmove(str+sp,str+sp+1,sl-sp);
 						if(cp)cp--;
 						if(cp<3&&bp) {
 							tmp=vl/3*2;
@@ -1107,7 +1118,7 @@ static int inputstr(char *str, char *name, int mode)
 			case KEY_DC:
 				if(sp<sl) {
 					sl--;
-					if(sl)strncpy(str+sp,str+sp+1,sl-sp);
+					if(sl)memmove(str+sp,str+sp+1,sl-sp);
 					fr=1;
 				} else xbeep();
 				break;
@@ -1309,7 +1320,7 @@ static void printinfo(char *addr, int what, char *buf)
 	int	rc;
 	char	*p, *t;
 
-	if ( strchr( "NDICH", toupper( *addr )))
+	if ( strchr( "NDICH", toupper( xuchar( *addr ))))
 		addr++;
 	else if( what )
 		return;
@@ -1794,7 +1805,15 @@ int main(int argc, char **argv, char **envp)
 				freshall();
 			}
 		} else if(ch==KEY_F(10))quitflag=1;
-		    else if(ch==KEY_F(1)){for(ch=0;help[ch];ch++)write_log(help[ch],version);}
+		    else if(ch==KEY_F(1)){
+#ifdef WITH_QCC_BINLOG
+			if ( currslot < 0 && hist_on() ) {
+				hist_toggle_help();
+				freshall();
+			} else
+#endif
+			{for(ch=0;help[ch];ch++)write_log(help[ch],version);}
+		    }
 			else if(ch>0&&(unsigned char)ch<255&&currslot>0&&slots[currslot]->chat) {
 				if(ch!=KEY_F(2)) {
 					if(ch==KEY_BACKSPACE||ch==127)ch='\b';
@@ -1835,9 +1854,9 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case 'p':
 				bf=getnode("Create poll for address: ");
-				if(bf&&strchr("HDNCI",toupper(*bf))&&bf[1]) {
+				if(bf&&strchr("HDNCI",toupper(xuchar(*bf)))&&bf[1]) {
 					xstrcpy(buf+3,bf+1,64);
-					buf[4+strlen(buf+3)]=toupper(*bf);
+					buf[4+strlen(buf+3)]=toupper(xuchar(*bf));
 					xcmd(buf,QR_POLL,strlen(buf+3)+5);
 				}
 				break;
@@ -1934,7 +1953,9 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case 'w': case 'W': case 'u': case 'U':
 			case 'i': case 'I': case 'h':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que)break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que)break;
 				xstrcpy(buf+3,que->addr,64);
 				len=strlen(buf+3)+4;
 				buf[len]=ch;
@@ -1948,19 +1969,48 @@ int main(int argc, char **argv, char **envp)
 				xcmd(buf,QR_STS,len+2);
 				break;
 			case 'k': case 'K':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que)break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que)break;
 				bf=getnode((ch=='k')?"Kill all files for (addr+'y'): ":"Kill all files for current addr? ('y'=yes, any other=no): ");
-				if(bf&&tolower(*bf)=='y'&&bf[1]) {
+				if(bf&&tolower(xuchar(*bf))=='y'&&bf[1]) {
 					xstrcpy(buf+3,(ch=='k')?(bf+1):que->addr,64);
 					xcmd(buf,QR_KILL,strlen(buf+3)+4);
 				}
 				break;
+			case 'a': case 'A':
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_show_all();
+					freshall();
+				}
+#endif
+				break;
+			case 'z': case 'Z':
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_toggle_zeroes();
+					freshall();
+				}
+#endif
+				break;
 			case 'f': case 'F':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='F')break;
+#ifdef WITH_QCC_BINLOG
+				if ( hist_on() ) {
+					hist_toggle_failed();
+					freshall();
+					break;
+				}
+#endif
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='F')break;
 				printinfo(ch=='F'?que->addr:getnode("Get info about address: "),ch=='f',buf);
 				break;
 			case 'e': case 'E':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='E')break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='E')break;
 				if(ch=='e') {
 					bf=getnode("Request file(s) from node: ");
 					if(!bf||*bf!='n'||!bf[1])break;
@@ -1980,10 +2030,12 @@ int main(int argc, char **argv, char **envp)
 				}
 				break;
 			case 's': case 'S':
-				for(;que&&que->n!=q_pos;que=que->next);if(!que&&ch=='S')break;
+				for(;que&&que->n!=q_pos;que=que->next)
+					;
+				if(!que&&ch=='S')break;
 				if(ch=='s') {
 					bf=getnode("Send file to node: ");
-					if(!bf||!strchr("HDNCI",toupper(*bf))||!bf[1])break;
+					if(!bf||!strchr("HDNCI",toupper(xuchar(*bf)))||!bf[1])break;
 					ch=*bf++;
 				} else bf=que->addr;
 				len=strlen(bf);

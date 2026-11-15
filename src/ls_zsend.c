@@ -368,10 +368,13 @@ int ls_zsendfile(ZFILEINFO *f, unsigned long sernum)
 	int hlen;
 	int needack = 0;
 
+	long pos = 0;
+
 	DEBUG(('Z',1,"ls_zsendfile: %s",f->name));
 
-	switch((rc = ls_zsendfinfo(f,sernum,&txpos))) {
+	switch((rc = ls_zsendfinfo(f,sernum,&pos))) {
 	case ZRPOS:		/* Ok, It's OK! */
+		txpos = pos;
 		DEBUG(('Z',2,"ls_zsendfile: ZRPOS to %d",txpos));
 		break;
 	case ZSKIP:		/* Skip it */

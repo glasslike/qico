@@ -60,6 +60,7 @@
  */
 
 #include "headers.h"
+#include <limits.h>
 #ifdef WITH_BINKP
 
 #ifdef HAVE_SYS_SOCKET_H
@@ -195,7 +196,7 @@ static int binkp_init(int to)
 	bps->got_adr = 0;
 
 	for( p = cfgs( CFG_BINKPOPT ); *p; p++ ) {
-		switch(tolower(*p)) {
+		switch(tolower(xuchar(*p))) {
 		case 'p':					/* Force password digest */
 			bps->opt_md |= O_NEED;
 
@@ -244,6 +245,7 @@ static void binkp_deinit(void)
 	xfree( bps->rx_buf );
 	xfree( bps->MD_chal );
 	xfree( bps->rfname );
+	xfree( bps->rftime );
 	for( i = 0; i < bps->nmsgs; i++ )
 		if ( bps->mqueue[i].msg )
 			xfree( bps->mqueue[i].msg );
@@ -283,7 +285,7 @@ static int msgs(char id, char *str, ...)
 
 	mkheader( bps->mqueue[bps->nmsgs].msg, len | 0x8000);
 	bps->mqueue[bps->nmsgs].msg[2] = (byte) id;
-	xstrcpy( bps->mqueue[bps->nmsgs].msg + 3, msg_body, len );
+	xstrcpy( (char *) (bps->mqueue[bps->nmsgs].msg + 3), msg_body, len );
 	bps->mqueue[bps->nmsgs].len += BLK_HDR_SIZE;
 
 	if ( bps->opt_cr == O_YES )
@@ -297,9 +299,256 @@ static int msgs(char id, char *str, ...)
 }
 
 
-static int file_parse(void *s, char **fn, long *sz, time_t *tm, long *offs)
+/*
+ * Last positive time a 32-bit long reads back: 2038-01-19 03:14:07 UTC.
+ * strtoul() of a larger token becomes -1, and binkd rejects the reply.
+ */
+#define BINKP_TIME_MAX 2147483647ULL
+
+/* Last time ext4 stores: 2446-05-10 22:38:55 UTC. */
+#define BINKP_TIME_DISK_MAX 15032385535ULL
+
+
+/* Unsigned decimal. Rejects junk and a value past 2^64-1. */
+static int binkp_dec_u64(const char *s, unsigned long long *out)
+{
+	unsigned long long v = 0;
+
+	if ( !s || !*s )
+		return 0;
+
+	for ( ; *s; s++ ) {
+		unsigned d;
+
+		if ( *s < '0' || *s > '9' )
+			return 0;
+		d = (unsigned) ( *s - '0' );
+		if ( v > (~0ULL) / 10 )
+			return 0;
+		v *= 10;
+		if ( v > ~0ULL - d )
+			return 0;
+		v += d;
+	}
+
+	*out = v;
+	return 1;
+}
+
+
+/*
+ * Size or offset for a file this mailer can count.
+ *
+ * pfile_t.ftot and the receive position are ints, so a value past
+ * INT_MAX would wrap and M_GOT could fire early. Digits only, no
+ * sign, except the NR resume request: M_FILE offset "-1" asks the
+ * receiver where to continue. Returns 1, or 0 when the token is
+ * empty, not decimal, or too big.
+ */
+static int binkp_dec_counter(const char *s, long *out, int allow_resume)
+{
+	unsigned long long v;
+
+	if ( allow_resume && s && strcmp( s, "-1" ) == 0 ) {
+		*out = -1;
+		return 1;
+	}
+	if ( !binkp_dec_u64( s, &v ))
+		return 0;
+	if ( v > (unsigned long long) INT_MAX )
+		return 0;
+	*out = (long) v;
+	return 1;
+}
+
+
+/* Decimal digits. Old printf has no %llu. */
+static void binkp_put_u64(char *dst, size_t n, unsigned long long v)
+{
+	char rev[20];
+	int i = 0, k;
+
+	if ( n == 0 )
+		return;
+
+	do {
+		rev[i++] = (char) ( '0' + (int) ( v % 10 ));
+		v /= 10;
+	} while ( v && i < (int) sizeof( rev ));
+
+	k = 0;
+	while ( i > 0 && (size_t) k + 1 < n )
+		dst[k++] = rev[--i];
+	dst[k] = '\0';
+}
+
+
+/* Decimal of a time_t, with a leading '-' when it is negative. */
+static void binkp_put_time(char *dst, size_t n, time_t t)
+{
+	unsigned long long mag;
+
+	if ( n == 0 )
+		return;
+	if ( t >= 0 ) {
+		binkp_put_u64( dst, n, (unsigned long long) t );
+		return;
+	}
+
+	/*
+	 * A negative value converted to unsigned long long is
+	 * 2^64 minus its magnitude, including the most negative time_t.
+	 */
+	mag = 0ULL - (unsigned long long) t;
+	if ( n < 2 ) {
+		dst[0] = '\0';
+		return;
+	}
+	dst[0] = '-';
+	binkp_put_u64( dst + 1, n - 1, mag );
+}
+
+
+/*
+ * FTS-1026 allows only zero or a positive unixtime. A date before
+ * 1970 is sent as 0, the same value on every retry, so a resumed
+ * transfer still matches. The file on disk is not rewritten.
+ */
+static void binkp_clip_send_time(void)
+{
+	char *path;
+
+	if ( sendf.mtime >= 0 )
+		return;
+
+	path = ( bps && bps->oflist ) ? bps->oflist->tosend : NULL;
+	write_log( "Binkp: %s timestamp is before 1970, sending 0",
+		path ? path : "file" );
+	sendf.mtime = 0;
+}
+
+
+/* Non-negative time that fits in time_t and on ext4. */
+static int binkp_time_keep_u(unsigned long long uv)
+{
+	if ( uv > BINKP_TIME_DISK_MAX )
+		return 0;
+	if ( sizeof( time_t ) < 8 && uv > BINKP_TIME_MAX )
+		return 0;
+	return 1;
+}
+
+
+/*
+ * Magnitude of a negative time_t. One past the largest positive
+ * time_t is the most negative value and still fits.
+ */
+static int binkp_time_set_neg(unsigned long long mag, time_t *out)
+{
+	if ( mag == 0 )
+		return 0;
+	if ( sizeof( time_t ) < 8 ) {
+		if ( mag > BINKP_TIME_MAX + 1 )
+			return 0;
+	} else if ( mag > ( ~0ULL >> 1 ) + 1 )
+		return 0;
+
+	*out = (time_t) ( -1 ) - (time_t) ( mag - 1 );
+	return 1;
+}
+
+
+/*
+ * Time named by a BinkP token. A leading '-' is that negative time.
+ * A number past 2^63-1 is the same time printed unsigned: binkd casts
+ * time_t to uintmax_t, so 18446744073503126219 is -206425397.
+ * Returns 0 when the token is empty, not decimal, or not a time_t.
+ */
+static int binkp_read_time(const char *token, time_t *out)
+{
+	unsigned long long uv, mag;
+	int neg = 0;
+
+	if ( !token || !*token )
+		return 0;
+	if ( token[0] == '-' ) {
+		neg = 1;
+		token++;
+	}
+	if ( !binkp_dec_u64( token, &uv ))
+		return 0;
+
+	if ( !neg && uv > ( ~0ULL >> 1 )) {
+		mag = 0ULL - uv;
+		return binkp_time_set_neg( mag, out );
+	}
+	if ( neg )
+		return binkp_time_set_neg( uv, out );
+	if ( !binkp_time_keep_u( uv ))
+		return 0;
+
+	*out = (time_t) uv;
+	return 1;
+}
+
+
+/*
+ * Token to send back, and the mtime to store. The signed spelling is
+ * what binkd compares. A token that is not a time_t is echoed as
+ * received and the file is stamped with the current time.
+ */
+static char *binkp_reply_time(const char *token, time_t *local)
+{
+	char buf[32];
+	time_t parsed, now;
+
+	now = time( NULL );
+	if ( now < 0 )
+		now = (time_t) 0;
+	*local = now;
+
+	if ( binkp_read_time( token, &parsed )) {
+		*local = parsed;
+
+		/* Echo a signed token unchanged: rebuilding it can differ. */
+		if ( parsed < 0 && token[0] == '-' )
+			return xstrdup( token );
+
+		binkp_put_time( buf, sizeof( buf ), parsed );
+		if ( parsed < 0 )
+			write_log( "Binkp: file time %s is before 1970, answering %s",
+				token, buf );
+		return xstrdup( buf );
+	}
+
+	if ( !token || !*token ) {
+		write_log( "Binkp: empty file time, storing the current time" );
+		binkp_put_time( buf, sizeof( buf ), *local );
+		return xstrdup( buf );
+	}
+
+	write_log( "Binkp: file time \"%s\" is not usable, echoing it and storing the current time",
+		token );
+	return xstrdup( token );
+}
+
+
+/*
+ * Split an M_FILE / M_GET / M_GOT argument list.
+ *
+ * Returns 1 when the fields are present and the size (and offset,
+ * when requested) fit in the receive counter. Returns 0 when the
+ * list is missing a field: the caller aborts, there is no file to
+ * name. Returns -1 when a number is junk or does not fit. The name
+ * and the original size and time tokens are still set, so the caller
+ * can skip that file and keep the session. allow_resume permits the
+ * M_FILE offset "-1" and nothing else negative.
+ */
+static int file_parse(void *s, char **fn, long *sz, time_t *tm, char **time_tok,
+	long *offs, char **size_tok, int allow_resume)
 {
 	char *n = (char *) s, *name, *size, *time, *off = NULL;
+	long size_n, off_n;
 
 	DEBUG(('B',4,"pars: in '%s'",n));
 	name = strsep( &n, " " );
@@ -311,17 +560,29 @@ static int file_parse(void *s, char **fn, long *sz, time_t *tm, long *offs)
 
 	DEBUG(('B',4,"pars: name=%s, size=%s, time=%s, offs=%s",
 		name, size, time, off));
-	if ( name && size && time && ( !offs || off )) {
-		*fn = name;
-		*sz = atol( size );
-		*tm = atol( time );
-		if ( offs )
-			*offs = atol( off );
-		DEBUG(('B',3,"pars: name=%s, size=%lu, time=%lu, offs=%ld",
-			*fn, *sz, *tm, offs ? *offs : -3l ));
-		return 1;
+	if ( !( name && size && time && ( !offs || off )))
+		return 0;
+
+	*fn = name;
+	if ( time_tok )
+		*time_tok = time;
+	if ( size_tok )
+		*size_tok = size;
+
+	if ( !binkp_dec_counter( size, &size_n, 0 ))
+		return -1;
+	*sz = size_n;
+	/* binkp_read_time() accepts the unsigned spelling of a negative time. */
+	if ( tm && !binkp_read_time( time, tm ))
+		*tm = (time_t) atol( time );
+	if ( offs ) {
+		if ( !binkp_dec_counter( off, &off_n, allow_resume ))
+			return -1;
+		*offs = off_n;
 	}
-	return 0;
+	DEBUG(('B',3,"pars: name=%s, size=%lu, time=%s, offs=%ld",
+		*fn, *sz, time, offs ? *offs : -3l ));
+	return 1;
 }
 
 
@@ -375,13 +636,13 @@ static int M_nul(BPS *bp, byte *arg)
 			rnode->speed = spd;
 		else {
 			comma = skip_blanks( buf + 4 );
-			while( comma && *comma && isdigit( *comma ))
+			while( comma && *comma && isdigit( xuchar( *comma )))
 				comma++;
 			if ( !comma || !*comma )
 				rnode->speed = TCP_SPEED;
-			else if ( tolower( *comma ) == 'k' )
+			else if ( tolower( xuchar( *comma )) == 'k' )
 				rnode->speed = spd * 1024;
-			else if ( tolower( *comma ) == 'm' )
+			else if ( tolower( xuchar( *comma )) == 'm' )
 				rnode->speed = spd * 1024 * 1024;
 			else
 				rnode->speed = TCP_SPEED;
@@ -400,16 +661,16 @@ static int M_nul(BPS *bp, byte *arg)
 
 		buf = skip_blanks( buf + 5 );
 
-		if ( isalpha( *buf ))			/* Skip day of week name "Mon, " */
+		if ( isalpha( xuchar( *buf )))			/* Skip day of week name "Mon, " */
 			buf = skip_blanks( buf + 5 );
 
 		DEBUG(('B',9,"1..... buf '%s'", buf));
-		if ( BMALTL && isdigit( *buf ) && ( isdigit( buf[1] ) || isspace( buf[1] ))) {
+		if ( BMALTL && isdigit( xuchar( *buf )) && ( isdigit( xuchar( buf[1] )) || isspace( xuchar( buf[1] )))) {
 			tt.tm_mday = atoi( buf );
 			buf = skip_blanks( buf + 2 );
 
 			DEBUG(('B',9,"2..... buf '%s'", buf));
-			if ( BMALTL && isalpha( *buf )) {
+			if ( BMALTL && isalpha( xuchar( *buf ))) {
 				buf[3] = '\0';
 				for( gmt = 0; gmt < 12; gmt++ ) {
 					if ( !strncasecmp( month_names[gmt], buf, 3 )) {
@@ -423,7 +684,7 @@ static int M_nul(BPS *bp, byte *arg)
 					buf = skip_blanks( buf + 4 );
 
 					DEBUG(('B',9,"4..... buf '%s'", buf));
-					if ( BMALTL && isdigit( *buf )) {
+					if ( BMALTL && isdigit( xuchar( *buf ))) {
 						gmt = atol( buf );
 						if ( errno != ERANGE ) {
 							if ( gmt > 1900 )
@@ -458,8 +719,8 @@ static int M_nul(BPS *bp, byte *arg)
 									while( *n && *n++ != ' ' );
 
 									DEBUG(('B',9,"A..... n '%s'", n));
-									if ( *n && isdigit( n[1] ) && isdigit( n[2] )
-										&& isdigit( n[3] ) && isdigit( n[4] ))
+									if ( *n && isdigit( xuchar( n[1] )) && isdigit( xuchar( n[2] ))
+										&& isdigit( xuchar( n[3] )) && isdigit( xuchar( n[4] )))
 									{
 										gmt = ((xN(1) * 10 + xN(2)) * 60 + (xN(3) * 10 + xN(4))) * 60;
 										if ( *n == '-' )
@@ -494,10 +755,10 @@ static int M_nul(BPS *bp, byte *arg)
 			bp->delay_eob = 1;
 	} else if ( !strncmp( buf, "TRF ", 4 )) {
 		n = skip_blanks( buf + 4 );
-		if ( n && *n && isdigit( *n )) {
+		if ( n && *n && isdigit( xuchar( *n ))) {
 			rnode->netmail = atoi( n );
 			n = skip_blanks( strchr( n, ' ' ));
-			if ( n && *n && isdigit( *n ))
+			if ( n && *n && isdigit( xuchar( *n )))
 				rnode->files = atoi( n );
 		}
 		if ( rnode->netmail + rnode->files )
@@ -708,7 +969,8 @@ static int M_adr(BPS *bp, byte *arg)
 	if ( bp->to ) {
 		if ( !has_addr( bp->remaddr, rnode->addrs )) {
 			log_rinfo( rnode );
-			write_log( "Called the wrong system" );
+			write_log( "called %s, but remote has no such AKA",
+				ftnaddrtoa( bp->remaddr ));
 			binlog_set_result( "wrong system" );
 			msgs( BPM_ERR, "Sorry, you are not who I need" );
 			bp->rc = S_FAILURE|S_ADDTRY;
@@ -735,9 +997,19 @@ static int M_adr(BPS *bp, byte *arg)
 			} else
 				msgs( BPM_PWD, "CRAM-MD5-%s", dig );
 			xfree( dig );
-		} else if ( bp->opt_md == O_YES ) {
-			msgs( BPM_ERR, "Can't use plaintext password" );
-			bp->rc = S_FAILURE|S_ADDTRY;
+		} else if ( bp->opt_md & O_NEED ) {
+			/*
+			 * binkpopt 'p' forces a digest on our call as well as
+			 * on an answer. O_YES is only set after a challenge
+			 * has been stored, so testing it here never fired and
+			 * the password went out in clear. Same refusal the
+			 * answering side already sends.
+			 */
+			log_rinfo( rnode );
+			write_log( "Remote does not support MD5" );
+			binlog_set_result( "no MD5" );
+			msgs( BPM_ERR, "You must support MD5" );
+			bp->rc = S_FAILURE | S_ADDTRY;
 			return 0;
 		} else
 			msgs( BPM_PWD, "%s", rem_pwd );
@@ -775,11 +1047,24 @@ static int M_adr(BPS *bp, byte *arg)
 static void binkp_abort(BPS *bp, const char *why)
 {
 	log_rinfo( rnode );
-	write_log( "session aborted: %s", why );
-	binlog_set_result( "aborted" );
+	write_log( "session refused by abortsession: %s", why );
+	binlog_set_result( "refused by abortsession" );
 	rnode->starttime = time( NULL );
 	msgs( BPM_ERR, "%s", why );
 	bp->rc = bp->to ? S_BUSY : S_FAILURE;
+}
+
+
+/*
+ * Set O_LST from listedfrom and needalllisted. Inbound calls this
+ * from M_pwd before abortsession. Outbound calls it from hsdone,
+ * which is the first point where the remote address list is final.
+ * binkplisted no skips the check, so BinkP stays unlisted.
+ */
+static void binkp_mark_listed(void)
+{
+	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
+		rnode->options |= O_LST;
 }
 
 
@@ -799,17 +1084,15 @@ static int binkp_hsdone(BPS *bp)
 		bp->opt_cr = O_NO;
 
 	/*
-	 * EMSI always runs addrs_listed() and may set O_LST. BinkP used
-	 * to skip that, so `if listed', FREQ listed-status and the "/LST"
-	 * bit in the options log stayed off. binkplisted now defaults to
-	 * yes: the same listedfrom and needalllisted rules as EMSI, after
-	 * ADR/PWD so rnode->addrs is complete. binkplisted no restores
-	 * the old "never listed on BinkP" behaviour. A missing index
-	 * still means "not in the nodelist" (the check does not compile
-	 * one). listedfrom in_configs does not open the index.
+	 * Inbound already set O_LST in M_pwd, before abortsession, so
+	 * `if listed' is visible while the M_ERR is still plaintext.
+	 * Outbound reaches here from M_OK and has not set it yet.
+	 * Setting the bit again is harmless. binkplisted no leaves it
+	 * clear, which is the old "BinkP is never listed" behaviour.
+	 * A missing index is "not in the nodelist" and is not compiled.
+	 * listedfrom in_configs does not open the index.
 	 */
-	if ( cfgi( CFG_BINKPLISTED ) && addrs_listed( rnode->addrs ))
-		rnode->options |= O_LST;
+	binkp_mark_listed();
 
 	/*
 	 * Inbound M_ERR is sent from M_pwd before this runs, in
@@ -880,7 +1163,8 @@ static int binkp_hsdone(BPS *bp)
 	write_log( "options: %s", tmp );
 	IFPerl(if(perl_on_session(tmp)!=S_OK) return 0);
     
-	title( "%sbound session %s", bp->to ? "Out" : "In", ftnaddrtoa( &rnode->addrs->addr ));
+	title( "%sbound session %s", bp->to ? "Out" : "In",
+		ftnaddrtoa( session_id_addr( bp->remaddr )));
 	qemsisend( rnode );
 	qpreset( 0 );
 	qpreset( 1 );
@@ -912,14 +1196,172 @@ static int binkp_hsdone(BPS *bp)
 
 
 /*
+ * Name stored under inbound for one M_FILE token.
+ *
+ * The token is what we echo in M_GOT / M_SKIP / M_GET, unchanged, so
+ * the sender can match the offer. This function only decides the
+ * single component rxopen() is given. FTS-1026 allows '/' and ':' in
+ * a file name; writing that string beside the inbound directory would
+ * leave the directory. "\" is the other separator on Windows.
+ *
+ * \xHH is decoded when both digits are hexadecimal. A short escape
+ * stays as text and is cleaned with the rest. An encoded NUL would
+ * hide the tail of the name, so the offer is refused. Only the last
+ * component of either slash is kept. Empty, "." and ".." are refused.
+ * A component that does not fit in the buffer we can pass to rxopen()
+ * is refused rather than cut. Controls, slash, backslash and colon
+ * inside the component become '_'.
+ *
+ * Returns 1 and a NUL-terminated name in dst. Returns 0 when the
+ * offer must not be opened.
+ */
+static int binkp_disk_name(const char *wire, char *dst, size_t dstsz)
+{
+	char		comp[MAX_PATH];
+	size_t		n = 0;
+	int		overflow = 0;
+	const unsigned char *s;
+
+	if ( !wire || !dst || dstsz < 2 )
+		return 0;
+
+	s = (const unsigned char *) wire;
+	while ( *s ) {
+		unsigned char c;
+
+		if ( s[0] == '\\' && ( s[1] == 'x' || s[1] == 'X' )
+			&& isxdigit( s[2] ) && isxdigit( s[3] )) {
+			c = (unsigned char) hexdcd( (char) s[2], (char) s[3] );
+			s += 4;
+		} else
+			c = *s++;
+
+		/* A decoded NUL ends C strings. The bytes after it would be dropped. */
+		if ( c == '\0' )
+			return 0;
+		if ( c == '/' || c == '\\' ) {
+			n = 0;
+			overflow = 0;
+			continue;
+		}
+		if ( overflow )
+			continue;
+		if ( n + 1 >= sizeof( comp ) || n + 1 >= dstsz ) {
+			overflow = 1;
+			continue;
+		}
+		comp[n++] = (char) c;
+	}
+
+	if ( overflow || n == 0 )
+		return 0;
+	comp[n] = '\0';
+	if ( strcmp( comp, "." ) == 0 || strcmp( comp, ".." ) == 0 )
+		return 0;
+
+	{
+		size_t i;
+
+		for ( i = 0; i < n; i++ ) {
+			unsigned char c = (unsigned char) comp[i];
+
+			if ( c < 32 || c == 127 || c == '/' || c == '\\' || c == ':' )
+				comp[i] = '_';
+		}
+	}
+
+	memcpy( dst, comp, n + 1 );
+	return 1;
+}
+
+
+/*
+ * A sender that cannot delete a file offers it again after every M_GOT.
+ * The third offer in a row of the same name and size drops the session.
+ * A normal transfer is one offer. NR mode sends M_FILE twice, so one
+ * further repeat ends it. A different name or size starts the count over.
+ * The name compared is the M_FILE token, the same string kept in rfname.
+ */
+#define BINKP_REPEAT_MAX 3
+
+static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
+{
+	if ( bp->rfname && bp->rpt_size == fsize && fname
+		&& !strncasecmp( fname, bp->rfname, MAX_PATH ))
+		bp->rpt_cnt++;
+	else {
+		bp->rpt_cnt = 1;
+		bp->rpt_size = fsize;
+	}
+
+	if ( bp->rpt_cnt < BINKP_REPEAT_MAX )
+		return 1;
+
+	write_log( "Binkp: %s (%ld bytes) offered %d times in a row, session dropped",
+		fname, fsize, bp->rpt_cnt );
+	binlog_set_result( "repeated file" );
+	msgs( BPM_ERR, "File offered too many times" );
+	bp->rc = S_FAILURE;
+	return 0;
+}
+
+
+/*
+ * The peer moved on while a file was still open: the next M_FILE, or
+ * M_EOB. A count that already matches the offer is a finished file
+ * (including an empty one, which never produces a data frame) and is
+ * published. The peer is told with M_GOT, the same way the last data
+ * block does it: otherwise the sender keeps the file and offers it
+ * again. Anything short stays in inbound/tmp and is not acknowledged.
+ * Publishing it would hand the tosser a truncated packet.
+ */
+static void binkp_recv_abandon(BPS *bp, const char *why)
+{
+	char	tmp[512];
+
+	if ( !bp->recv_file )
+		return;
+
+	/*
+	 * Quote the token the peer sent. A disk name can differ, and the
+	 * sender matches this string against its offer.
+	 */
+	snprintf( tmp, sizeof( tmp ), "%s %lu %s",
+		bp->rfname ? bp->rfname : ( recvf.fname ? recvf.fname : "file" ),
+		(unsigned long) ( recvf.ftot < 0 ? 0 : recvf.ftot ),
+		bp->rftime ? bp->rftime : "0" );
+
+	if ( recvf.ftot >= 0 && bp->rxpos == (size_t) recvf.ftot ) {
+		if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
+			msgs( BPM_SKIP, "%s", tmp );
+			sline( "Binkp: file close error" );
+			write_log( "can't close %s, suspended",
+				recvf.fname ? recvf.fname : "file" );
+		} else
+			msgs( BPM_GOT, "%s", tmp );
+	} else {
+		write_log( "Binkp: \"%s\" closed unfinished (%lu of %lu), %s",
+			recvf.fname ? recvf.fname : "file",
+			(unsigned long) bp->rxpos,
+			(unsigned long) recvf.ftot,
+			why );
+		rxclose( &rxfd, FOP_SUSPEND );
+	}
+	bp->recv_file = 0;
+	qpfrecv();
+}
+
+
+/*
  * Process M_FILE command
  */
 static int M_file(BPS *bp, byte *arg)
 {
-	char	*buf = (char *) arg, *fname = NULL;
+	char	*buf = (char *) arg, *fname = NULL, *time_tok = NULL, *size_tok = NULL, *wire;
+	char	disk[MAX_PATH];
 	long	fsize, foffs;
-	int	i, n;
-	time_t	ftime;
+	int	parsed;
+	time_t	local;
 
 	DEBUG(('B',3,"FILE %s", buf));
 
@@ -931,13 +1373,11 @@ static int M_file(BPS *bp, byte *arg)
 	bp->cls = 1;
 	bp->recv_eob = 0;
 
-	if ( bp->recv_file ) {
-		rxclose( &rxfd, FOP_OK );
-		bp->recv_file = 0;
-		qpfrecv();
-	}
+	binkp_recv_abandon( bp, "next file offered" );
 
-	if ( !file_parse( buf, &fname, &fsize, &ftime, &foffs )) {
+	parsed = file_parse( buf, &fname, &fsize, NULL, &time_tok, &foffs,
+		&size_tok, 1 );
+	if ( parsed == 0 ) {
 		msgs( BPM_ERR, "M_FILE: unparsable file info: \"%s\"", buf );
 		write_log( "Binkp: got unparsable file info: \"%s\"", buf );
 		if ( bp->send_file )
@@ -945,39 +1385,79 @@ static int M_file(BPS *bp, byte *arg)
 		bp->rc = ( bp->to ? S_REDIAL | S_ADDTRY : S_BUSY );
 		return 0;
 	}
+	/*
+	 * A number that does not fit is this file only. The session
+	 * stays up. The skip quotes the tokens the peer sent, so a
+	 * sender that parsed them can drop the offer. Data frames that
+	 * still arrive have recv_file clear and are ignored.
+	 */
+	if ( parsed < 0 ) {
+		write_log( "Binkp: \"%s\" size or offset is not usable, skipped",
+			fname );
+		if ( !binkp_repeat_limit( bp, fname, -1 ))
+			return 0;
+		xfree( bp->rfname );
+		bp->rfname = xstrdup( fname );
+		msgs( BPM_SKIP, "%s %s %s", bp->rfname,
+			size_tok ? size_tok : "0",
+			time_tok ? time_tok : "0" );
+		return 1;
+	}
 
-	if ( bp->rfname && !strncasecmp( fname, bp->rfname, MAX_PATH )
-		&& bp->rmtime == ftime && recvf.ftot == fsize && recvf.soff == foffs )
+	if ( !binkp_repeat_limit( bp, fname, fsize ))
+		return 0;
+
+	/* wire is answered to the sender. local is stored on the file. */
+	wire = binkp_reply_time( time_tok, &local );
+
+	/*
+	 * A repeated offer for the file currently being received (the
+	 * same name, size, time and offset) is ignored. rxfd must still
+	 * be open: after a finished receive it is NULL, and setting
+	 * recv_file anyway makes the next data block fwrite a closed
+	 * stream. That repeated offer is handled below, usually as a skip.
+	 */
+	if ( bp->recv_file && rxfd
+		&& bp->rfname && bp->rftime && wire
+		&& !strncasecmp( fname, bp->rfname, MAX_PATH )
+		&& !strcmp( bp->rftime, wire )
+		&& recvf.ftot == fsize && recvf.soff == foffs )
 	{
-		bp->recv_file = 1;
-		bp->rxpos = foffs;
+		xfree( wire );
 		return 1;
 	}
 
 	xfree( bp->rfname );
-	bp->rmtime = ftime;
-	bp->rfname = xstrdup( qbasename( fname ));
+	xfree( bp->rftime );
+	bp->rftime = wire;
+	bp->rmtime = local;
+	/*
+	 * rfname is the token the peer sent. Replies quote it so the
+	 * sender's comparison succeeds. disk is the only name opened.
+	 */
+	bp->rfname = xstrdup( fname );
 
-	for( i = 0, n = 0; i < (int) strlen( fname ); ) {
-		if ( fname[i] == '\\' && tolower( fname[i+1] ) == 'x' ) {
-			fname[n++] = hexdcd( fname[i+2], fname[i+3] );
-			i += 4;
-		} else
-			fname[n++] = fname[i++];
+	if ( !binkp_disk_name( fname, disk, sizeof( disk ))) {
+		write_log( "Binkp: file name \"%s\" is not a safe name, skipped", fname );
+		msgs( BPM_SKIP, "%s %lu %s", bp->rfname, (long) fsize,
+			bp->rftime ? bp->rftime : "0" );
+		return 1;
 	}
+	if ( strcmp( fname, disk ) != 0 )
+		write_log( "Binkp: file name \"%s\" stored as \"%s\"", fname, disk );
 
-	switch( rxopen( fname, ftime, fsize, &rxfd )) {
+	switch( rxopen( disk, local, fsize, &rxfd )) {
 	case FOP_ERROR:
 		write_log( "Binkp: error open file for write \"%s\"", recvf.fname );
 
 	case FOP_SUSPEND:
 		DEBUG(('B',2,"trying to suspend file \"%s\"", recvf.fname ));
-		msgs( BPM_SKIP, "%s %lu %lu", bp->rfname, (long) recvf.ftot, bp->rmtime );
+		msgs( BPM_SKIP, "%s %lu %s", bp->rfname, (long) recvf.ftot, bp->rftime );
 		break;
 
 	case FOP_SKIP:
 		DEBUG(('B',2,"trying to skip file \"%s\"", recvf.fname ));
-		msgs( BPM_GOT, "%s %lu %lu", bp->rfname, (long) recvf.ftot, bp->rmtime );
+		msgs( BPM_GOT, "%s %lu %s", bp->rfname, (long) recvf.ftot, bp->rftime );
 		break;
 
 	case FOP_OK:
@@ -992,8 +1472,8 @@ static int M_file(BPS *bp, byte *arg)
 	case FOP_CONT:
 		DEBUG(('B',2,"trying to get file \"%s\" from offset %ld",
 			recvf.fname, (long) recvf.soff ));
-		msgs( BPM_GET, "%s %lu %lu %ld", bp->rfname, (long) recvf.ftot,
-			bp->rmtime, (long) recvf.soff );
+		msgs( BPM_GET, "%s %lu %s %ld", bp->rfname, (long) recvf.ftot,
+			bp->rftime, (long) recvf.soff );
 		break;
 	}
 
@@ -1099,6 +1579,15 @@ static int M_pwd(BPS *bp, byte *arg)
 	if ( !( rnode->options & O_PWD ) || bp->opt_md != O_YES )
 		bp->opt_cr = O_NO;
 
+	/*
+	 * abortsession runs before hsdone, while M_ERR is still
+	 * plaintext. Addresses and the protected bit are already set.
+	 * Listed must be set here too: otherwise `if !listed' is true
+	 * for every inbound BinkP session and drops a node that the
+	 * outbound path, which marks listed in hsdone, would accept.
+	 */
+	binkp_mark_listed();
+
 	{
 		char *why = session_abort_text();
 
@@ -1183,11 +1672,7 @@ static int M_eob(BPS *bp, byte *arg)
 	}
 	*/
 
-	if ( bp->recv_file ) {
-		rxclose( &rxfd, FOP_OK );
-		bp->recv_file = 0;
-		qpfrecv();
-	}
+	binkp_recv_abandon( bp, "end of batch" );
 
 	bp->recv_eob = 1;
 	bp->delay_eob = 0;
@@ -1249,14 +1734,22 @@ static int M_bsy(BPS *bp, byte *arg)
 static int M_get(BPS *bp, byte *arg)
 {
 	char	*buf = (char *) arg, *fname;
-	long	fsize, ftime, foffs;
+	char	tbuf[32];
+	long	fsize, foffs;
+	int	parsed;
+	time_t	ftime;
 
 	DEBUG(('B',3,"GET %s", buf));
 
 	if ( !bp_xfer_ok( bp, "M_GET" ))
 		return 0;
-    
-	if ( file_parse( buf, &fname, &fsize, &ftime, &foffs )) {
+
+	parsed = file_parse( buf, &fname, &fsize, &ftime, NULL, &foffs, NULL, 0 );
+	if ( parsed < 0 ) {
+		write_log( "Binkp: M_GET size or offset is not usable, ignored" );
+		return 1;
+	}
+	if ( parsed ) {
 		if ( bp->send_file && sendf.fname
 			&& !strncasecmp( fname,sendf. fname, MAX_PATH)
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
@@ -1269,8 +1762,9 @@ static int M_get(BPS *bp, byte *arg)
 			} else {
 				sendf.soff = sendf.foff = bp->txpos = foffs;
 				bp->wait_for_get = 0;
-				msgs( BPM_FILE, "%s %lu %ld %lu", sendf.fname, (long) sendf.ftot,
-					sendf.mtime, (long) foffs );
+				binkp_put_time( tbuf, sizeof( tbuf ), sendf.mtime );
+				msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname, (long) sendf.ftot,
+					tbuf, foffs );
 			}
 		} else
 			write_log( "Binkp: got M_GET for unknown file" );
@@ -1289,14 +1783,21 @@ static int M_gotskip(BPS *bp, byte *arg)
 	char 	*buf = (char *) arg;
 	char 	*fname;
 	int 	id = *bp->rx_buf;
-	long 	fsize, ftime;
+	int	parsed;
+	long 	fsize;
+	time_t	ftime;
 
 	DEBUG(('B',3,"%s %s", mess[id], buf));
 
 	if ( !bp_xfer_ok( bp, mess[id] ))
 		return 0;
 
-	if ( file_parse( buf, &fname, &fsize, &ftime, NULL )) {
+	parsed = file_parse( buf, &fname, &fsize, &ftime, NULL, NULL, NULL, 0 );
+	if ( parsed < 0 ) {
+		write_log( "Binkp: M_%s size is not usable, ignored", mess[id] );
+		return 1;
+	}
+	if ( parsed ) {
         	if ( sendf.fname && !strncasecmp( fname, sendf.fname, MAX_PATH )
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
 		{
@@ -1496,7 +1997,8 @@ static int store_data(BPS *bp)
 	DEBUG(('B',4,"got: data %d",bp->rx_size));
 	DEBUG(('B',4,"data: rxpos %lu, recvf.foff %lu", (long) bp->rxpos, (long) recvf.foff ));
 
-	snprintf( tmp, 511, "%s %lu %lu", bp->rfname, (long) recvf.ftot, bp->rmtime );
+	snprintf( tmp, 511, "%s %lu %s", bp->rfname, (long) recvf.ftot,
+		bp->rftime ? bp->rftime : "0" );
 
 	if ( rxstatus ) {
 		msgs(( rxstatus == RX_SUSPEND ) ? BPM_SKIP : BPM_GOT, tmp );
@@ -1508,8 +2010,10 @@ static int store_data(BPS *bp)
 	/*
 	 * fwrite() returns the number of members written, never -1.
 	 * A short write or a failed flush used to look like success
-	 * and could still produce M_GOT. Match binkd: require a full
-	 * write and a successful flush.
+	 * and could still produce M_GOT. The completing block is also
+	 * fsync'd before M_GOT, so a crash after the acknowledgement
+	 * does not lose the file. A failed sync skips the file instead
+	 * of acknowledging it. Intermediate blocks are flushed only.
 	 */
 	n = (int) fwrite( bp->rx_buf, 1, (size_t) bp->rx_size, rxfd );
 	if ( n != bp->rx_size || fflush( rxfd ) != 0 ) {
@@ -1532,6 +2036,14 @@ static int store_data(BPS *bp)
 			rxclose( &rxfd, FOP_SUSPEND );
 			msgs( BPM_SKIP, tmp );
 		} else if ( bp->rxpos == (int) recvf.ftot) {
+			if ( fsync( fileno( rxfd )) != 0 ) {
+				bp->recv_file = 0;
+				sline( "Binkp: file sync error" );
+				write_log( "can't sync %s, suspended", recvf.fname );
+				rxclose( &rxfd, FOP_ERROR );
+				msgs( BPM_SKIP, tmp );
+				return 1;
+			}
 			bp->recv_file = 0;
 			if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
 				msgs( BPM_SKIP, tmp );
@@ -1701,7 +2213,7 @@ static void binkp_hs(BPS *bp)
 		tm->tm_hour, tm->tm_min, tm->tm_sec,
 		negative ? '-' : '+', offset / 3600, offset % 3600 );
 
-	snprintf( tmp, 511 , "%s-%s/%s", progname, version, osname );
+	snprintf( tmp, 511 , "%s-%s/%s", progname, version_id, osname );
 	strtr( tmp, ' ', '-' );
 	msgs( BPM_NUL, "VER %s %s", tmp, BP_PROT "/" BP_VERSION );
 
@@ -1803,7 +2315,14 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 
 				bps->send_file = 1;
 				bps->txpos = ( bps->wait_for_get = ( bps->opt_nr & O_WE )) ? -1 : 0;
-				msgs( BPM_FILE, "%s %lu %lu %ld", sendf.fname, (long) sendf.ftot, sendf.mtime, bps->txpos );
+				binkp_clip_send_time();
+				{
+					char tbuf[32];
+
+					binkp_put_time( tbuf, sizeof( tbuf ), sendf.mtime );
+					msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname, (long) sendf.ftot,
+						tbuf, (long) bps->txpos );
+				}
                 
 				if ( bps->wait_for_get )
 					DEBUG(('B',2,"waiting for M_GET"));

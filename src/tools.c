@@ -84,7 +84,7 @@ static int initcharset(char *name,unsigned char *tab)
     }
     memset(tab,0,128);
     while(fgets(buf,MAX_STRING,f)) {
-        if(!isdigit(*buf))continue;
+        if(!isdigit(xuchar(*buf)))continue;
         if(*buf=='0'&&buf[1]=='x') {
             if(sscanf(buf,"0x%x 0x%x",&i,&c)!=2)continue;
         } else {
@@ -192,8 +192,22 @@ char *mapname(char *fn, char *map, size_t size)
 	t = whattype( fn );
 
 	if ( strchr( map, 'b' ) && t != IS_FILE ) {
+		char	ext[MAX_PATH];
+		char	shortname[14];
+
+		/*
+		 * The extension pointer used to alias fn while snprintf wrote
+		 * fn, so the suffix was read from memory being overwritten.
+		 * Copy it aside first. The 14-byte result is the historical
+		 * 8.3 slot; size is the caller's real buffer.
+		 */
 		l = strrchr( fn, '.' );
-		snprintf( fn, 14, "%08lx%s", crc32s( fn ), l );
+		ext[0] = '\0';
+		if ( l )
+			xstrcpy( ext, l, sizeof( ext ));
+		snprintf( shortname, sizeof( shortname ), "%08lx%s",
+			(unsigned long) crc32s( fn ), ext );
+		xstrcpy( fn, shortname, size );
 	}
 
 	if ( strchr( map, 'u' ))
@@ -283,7 +297,10 @@ char *qver(int w)
 		if ( ccs && strncasecmp( ccs, progname, 4 ))
 			if ( cfgs( CFG_VERSION ))
 				return ccs;
-		return version;
+		/* EMSI and the tear line. version_id carries the dev commit.
+		 * A configured version above still replaces it. The plain
+		 * version string is what the qcc screen shows. */
+		return version_id;
 
 	default:
 		return ( cfgs( CFG_OSNAME ) ? ccs : osname );
@@ -370,19 +387,6 @@ int lockpid(const char *pidfn)
 		return 0;
 #endif
 	return 1;
-}
-
-
-static int touch(char *fn)
-{
-	FILE *f = fopen( fn, "a" );
-
-	if ( f ) {
-		fclose( f );
-		return 1;
-	} else
-		write_log( "can't touch '%s': %s", fn, strerror( errno ));
-	return 0;
 }
 
 
@@ -622,7 +626,7 @@ char *fnc(char *s)
 
 	while( *p && *p != '.' && i < 8 ) {
 		if ( dosallowin83( *p ))
-			s8[i++] = tolower( *p );
+			s8[i++] = tolower( xuchar( *p ));
 		p++;
 	}
 	s8[i] = '\0';
@@ -644,7 +648,7 @@ char *fnc(char *s)
 			i = strlen( s8 );
 			while( *p && q > p ) {
 				if ( dosallowin83( *p ))
-					s8[i++] = tolower( *p );
+					s8[i++] = tolower( xuchar( *p ));
 				p++;
 			}
 			s8[i] = '\0';

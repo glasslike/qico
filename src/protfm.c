@@ -168,7 +168,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 			return FOP_SUSPEND;
 		}
 
-	snprintf(p, MAX_PATH, "%s/tmp/", cfgs(CFG_INBOUND));
+	if ( !cfgs( CFG_INBOUND ) || !pathfit( p, sizeof( p ), cfgs( CFG_INBOUND ), "/tmp/", NULL )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 	if(stat(p, &sb))
 		if(mkdirs(p) && errno!=EEXIST) {
 			write_log("can't make directory %s: %s", p, strerror(errno));
@@ -176,7 +181,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 			skipiftic=FOP_SUSPEND;
 			return FOP_SUSPEND;
 		}
-	snprintf(p, MAX_PATH, "%s/%s", ccs, bn);
+	if ( !ccs || !pathfit( p, sizeof( p ), ccs, "/", bn )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 
 	if(!stat(p, &sb) && sb.st_size==rsize) {
 		write_log(weskipstr,recvf.fname,"");
@@ -184,7 +194,12 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 		return FOP_SKIP;
 	}
 
-	snprintf(p, MAX_PATH, "%s/tmp/%s", ccs, bn);
+	if ( !ccs || !pathfit( p, sizeof( p ), ccs, "/tmp/", bn )) {
+		write_log( "inbound path too long" );
+		write_log( wesusstr, recvf.fname, "" );
+		skipiftic = FOP_SUSPEND;
+		return FOP_SUSPEND;
+	}
 
 	if(!stat(p, &sb)) {
 		if(sb.st_size<rsize && sb.st_mtime==recvf.mtime) {
@@ -230,7 +245,9 @@ int rxclose(FILE **f, int what)
 	if(!f || !*f) return FOP_ERROR;
 	recvf.toff+=recvf.foff;recvf.stot+=recvf.soff;
 	*p2=0;
-	if(!cps) cps=1;cps=(recvf.foff-recvf.soff)/cps;
+	if(!cps)
+		cps=1;
+	cps=(recvf.foff-recvf.soff)/cps;
 	IFPerl(if((ss=perl_end_recv(what))) {
 		if(!*ss)what=FOP_SKIP;
 		else xstrcpy(p2,ss,MAX_PATH);});
@@ -378,7 +395,9 @@ int txclose(FILE **f, int what)
 	if(!f || !*f) return FOP_ERROR;
 	sendf.toff+=sendf.foff;sendf.stot+=sendf.soff;
 
-	if(!cps) cps=1;cps=(sendf.foff-sendf.soff)/cps;
+	if(!cps)
+		cps=1;
+	cps=(sendf.foff-sendf.soff)/cps;
 	IFPerl(perl_end_send(what));
 	switch(what) {
 		case FOP_SUSPEND: ss="suspended";break;
@@ -480,7 +499,8 @@ int chatsend(unsigned char *str)
 	if(!c_devfree())return 1;
 	if(chattimer<2) {
 		c_devsend((unsigned char*)hellostr,strlen(hellostr)+1);
-		chatlg=chatlog_init(rnode->sysop,&rnode->addrs->addr,0);
+		chatlg=chatlog_init(rnode->sysop,
+			session_id_addr( ( rnode->options & O_INB ) ? NULL : &ndefaddr ), 0);
 		qchat("");
 	} else if(*str!=5) {
 		xstrcpy( (char*) ubuf, (char*) str, CHAT_BUF);
@@ -501,7 +521,8 @@ void c_devrecv(unsigned char *data,unsigned len)
 		char *p;
 		if(len>5&&data[1]!=5&&(p=strstr((char*)data," * "))&&(strstr(p+3,"lose")||strstr(p+3,"has chat")))return;
 		c_devsend((unsigned char*)hellostr,strlen(hellostr));
-		chatlg=chatlog_init(rnode->sysop,&rnode->addrs->addr,1);
+		chatlg=chatlog_init(rnode->sysop,
+			session_id_addr( ( rnode->options & O_INB ) ? NULL : &ndefaddr ), 1);
 	}
 	recode_to_local((char*)data);
 	if(data[strlen((char*)data)-1]==5)data[strlen((char*)data)-1]='\n';

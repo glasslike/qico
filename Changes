@@ -1,3 +1,39 @@
+Version 0.60.4
+~~~~~~~~~~~~~~
+- binkp: default binkpopt is MBM. CRAM-MD5 is offered;
+  plaintext is still accepted unless `p' is set.
+- fix [security] config: a password starting with CRAM- is
+  rejected at load. The secret is not logged.
+- fix [security] binkp: the CRAM challenge is read from
+  /dev/urandom. If that read fails, the time/pid mix is used
+  and logged.
+- fix binkp: `p' also blocks a clear password on our own call.
+- fix [security] binkp: fsync the completing block before M_GOT.
+  A failed sync skips the file.
+- fix [security] binkp: a short file stays in inbound/tmp and is
+  not acknowledged. A complete file, including an empty one, is
+  published and acknowledged with M_GOT.
+- fix [security] binkp: a size or offset that does not fit the
+  receive counter is skipped. The batch continues. M_FILE "-1"
+  is unchanged.
+- fix [security] binkp: a received name is stored as one inbound
+  component. Replies quote the original M_FILE token. NUL, an
+  empty name, "." and ".." are skipped.
+- fix outbound session: session is recorded as the address we called,
+  not the remote's first AKA.
+- fix compiler and configure warnings on 64-bit Linux and BSD.
+- fix paths and freq commands: a line that does not fit is
+  refused and logged instead of being cut.
+- qcc session log: Z/z hides sessions with no traffic, F/f shows
+  failed ones only. Both last until the binlog file changes.
+  A/a shows every session again.
+- fix binkp: a file time before 1970 no longer aborts the session.
+  The local file keeps its date. A time through 2446-05-10 is
+  kept and sent in full.
+- binkp: the third offer in a row of the same file ends the session.
+- fix binkp: inbound abortsession runs after listed is set.
+
+
 Version 0.60.3
 ~~~~~~~~~~~~~~
 - fix config parser: a keyword with no value is empty.

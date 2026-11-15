@@ -84,13 +84,25 @@
 
 
 #ifdef POSIX_TERMIOS
-static char tio_compilation_type[]="@(#)tty.c compiled with POSIX_TERMIOS";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with POSIX_TERMIOS";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with POSIX_TERMIOS";
+#endif
 #endif
 #ifdef SYSV_TERMIO
-static char tio_compilation_type[]="@(#)tty.c compiled with SYSV_TERMIO";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with SYSV_TERMIO";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with SYSV_TERMIO";
+#endif
 #endif
 #ifdef BSD_SGTTY
-static char tio_compilation_type[]="@(#)tty.c compiled with BSD_SGTTY";
+#if defined(__GNUC__) || defined(__clang__)
+static char tio_compilation_type[] __attribute__((used)) = "@(#)tty.c compiled with BSD_SGTTY";
+#else
+static char tio_compilation_type[] = "@(#)tty.c compiled with BSD_SGTTY";
+#endif
 #endif
 
 
@@ -133,7 +145,8 @@ char *tty_errs[] = {
     "can't lock port",       /* ME_CANTLOCK  8 */
     "can't set/get flags",   /* ME_FLAGS     9 */
     "not a tty",             /* ME_NOTATT   10 */
-    "no DSR/CTS signals"     /* ME_NODSR    11 */
+    "no DSR/CTS signals",    /* ME_NODSR    11 */
+    "lock name too long"     /* ME_LOCKNAME 12 */
 };
 
 
@@ -510,12 +523,14 @@ int tty_isfree(const char *port, const char *nodial)
 		return 0;
 
 	if ( nodial ) {
-		snprintf( lckname, MAX_PATH, "%s.%s", nodial, port );
+		if ( !pathfit( lckname, sizeof( lckname ), nodial, ".", port ))
+			return -2;
 		if ( !stat( lckname, &s ))
 			return 0;
 	}
 
-	LCK_NAME(lckname, port);
+	if ( !LCK_NAME(lckname, port) )
+		return -1;
 	if (( f = fopen( lckname, "r" ))) {
 		fscanf( f, "%d", &pid );
 		fclose( f );
@@ -531,9 +546,30 @@ int tty_isfree(const char *port, const char *nodial)
 
 char *tty_findport(slist_t *ports, const char *nodial)
 {
-	for(; ports; ports = ports->next )
-		if( tty_isfree( baseport( ports->str ), nodial ))
+	char	longname[MAX_PATH + 5];
+	int	why = 0;
+
+	/*
+	 * tty_isfree() returns 1 when the port can be taken. A negative
+	 * value means the lock or nodial name does not fit; that is not
+	 * the same as a port someone else is holding. The name is logged
+	 * only when no other port was free, so a usable line stays quiet.
+	 */
+	longname[0] = '\0';
+	for( ; ports; ports = ports->next ) {
+		const char	*bp = baseport( ports->str );
+		int		rc = tty_isfree( bp, nodial );
+
+		if ( rc == 1 )
 			return ports->str;
+		if ( rc < 0 && !longname[0] && bp ) {
+			xstrcpy( longname, bp, sizeof( longname ));
+			why = rc;
+		}
+	}
+	if ( longname[0] )
+		write_log( "%s name too long for port %s",
+			why == -2 ? "nodial" : "lock", longname );
 	return NULL;
 }
 
@@ -550,7 +586,12 @@ int tty_lock(const char *port)
 	else
 		p++;
 
-	LCK_NAME(lckname, p);
+	/*
+	 * -2 is not a held lock. modem_init_device() prints it as
+	 * "lock name too long" instead of "can't lock port".
+	 */
+	if ( !LCK_NAME(lckname, p) )
+		return -2;
 	rc = lockpid( lckname );
 	return rc ? 0 : -1;
 }
@@ -558,7 +599,7 @@ int tty_lock(const char *port)
 
 void tty_unlock(const char *port)
 {
-	long		pid;
+	long		pid = 0;
 	char		lckname[MAX_PATH + 5];
 	const char	*p;
 	FILE		*f;
@@ -569,7 +610,8 @@ void tty_unlock(const char *port)
 	else
 		p++;
 
-	LCK_NAME(lckname, p);
+	if ( !LCK_NAME(lckname, p) )
+		return;
 	if (( f = fopen( lckname, "r" ))) {
 		fscanf( f, "%ld", &pid );
 		fclose( f );
@@ -810,18 +852,6 @@ int tty_dcd(int fd)
 	DEBUG(('M',2,"tty_dcd: CD is %s",(rs_lines & TIO_F_DCD ? "On" : "Off")));
 
 	return ( rs_lines & TIO_F_DCD );
-}
-
-
-/*
- * Close all FDs >= a specified value
- */
-static void fd_close_all(int startfd)
-{
-	int fdlimit = sysconf(_SC_OPEN_MAX);
-
-	while( startfd < fdlimit )
-		close( startfd++ );
 }
 
 

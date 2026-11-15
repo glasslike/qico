@@ -604,13 +604,16 @@ protorder	HJDZ1C
 # make sure you have properly working DNS.
 ;resolvehostname	yes
 
-# Binkp options:
+# Binkp options. Omitted, the default is MBM: CRAM-MD5 is offered
+# and a plaintext password is still accepted.
 # M - MD5 authentication
 # C - Crypt traffic
 # R - Not-Reliable mode
 # D - No-Dupes mode (currently not supported)
 # B - MultiBatch mode
-# P - Disable plain authentication
+# P - Disable plain authentication on an answer and on our own call.
+#     Without P a peer that offers no CRAM challenge still gets the
+#     password in clear.
 # T - Chat enable
 binkpopt	MRBCT
 

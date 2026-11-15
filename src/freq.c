@@ -26,7 +26,7 @@
 int freq_ifextrp(slist_t *reqs)
 {
     FILE *f, *g, *r;
-    char s[MAX_PATH], fn[MAX_PATH], sfn[MAX_PATH], *ss;
+    char s[MAX_PATH], fn[MAX_PATH], sfn[MAX_PATH], cmd[MAX_PATH * 2 + 192], *ss;
     char priv = 'a', *p, *sprt = "UNPROTEC", *slst = "UNLIS";
     int got = 0, wz = cfgs( CFG_EXTRP ) ? 1 : 0, kil;
     long tpid = (long) getpid();
@@ -79,10 +79,31 @@ int freq_ifextrp(slist_t *reqs)
         fprintf(r,"OurAKA %s\n",ftnaddrtoa(ma));
         fprintf(r,"TRANX %08lu\n",time(NULL));
         fclose(r);
-        snprintf(s,MAX_PATH,"%s %s",cfgs(CFG_SRIFRP),sfn);
-    } else snprintf(s,MAX_PATH,"%s -wazoo -%c -s%d %s /tmp/qreq.%04lx /tmp/qfls.%04lx /tmp/qrep.%04lx",
-            cfgs(CFG_EXTRP),priv,rnode->realspeed,ftnaddrtoa(&rnode->addrs->addr),tpid,tpid,tpid);
-    write_log("exec '%s' returned rc=%d",s,execsh(s));
+        {
+            const char *rp = cfgs( CFG_SRIFRP );
+            if ( !rp || !pathfit( cmd, sizeof( cmd ), rp, " ", sfn )) {
+                write_log( "freq processor command too long" );
+                return 0;
+            }
+        }
+    } else {
+        char mid[32], files[96], addrpart[MAX_PATH];
+        const char *rp = cfgs( CFG_EXTRP );
+        const char *addr = ftnaddrtoa( &rnode->addrs->addr );
+        int nw = snprintf( mid, sizeof( mid ), " -wazoo -%c -s%d ", priv, rnode->realspeed );
+        int nf = snprintf( files, sizeof( files ),
+            " /tmp/qreq.%04lx /tmp/qfls.%04lx /tmp/qrep.%04lx", tpid, tpid, tpid );
+        if ( nw < 0 || (size_t) nw >= sizeof( mid )
+            || nf < 0 || (size_t) nf >= sizeof( files )
+            || !addr
+            || !pathfit( addrpart, sizeof( addrpart ), addr, files, NULL )
+            || !rp
+            || !pathfit( cmd, sizeof( cmd ), rp, mid, addrpart )) {
+            write_log( "freq processor command too long" );
+            return 0;
+        }
+    }
+    write_log("exec '%s' returned rc=%d",cmd,execsh(cmd));
     lunlink(fn);lunlink(sfn);
     snprintf(fn,MAX_PATH,"/tmp/qfls.%04lx",tpid);
     if(!(f=fopen(fn,"rt"))) {

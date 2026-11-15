@@ -176,8 +176,8 @@ void q_each(const char *fname, const ftnaddr_t *fa, int type, int flavor, int rs
 	
 	DEBUG(('Q',4,"q_each: lo '%s'",fname));
 
-	cflav = (f & Q_CANPOLL) ? (strchr( callflavs, tolower( Q_CHARS[flavor - 1] ))
-		|| strchr( callflavs, toupper( Q_CHARS[flavor - 1] ))) : 0; 
+	cflav = (f & Q_CANPOLL) ? (strchr( callflavs, tolower( xuchar( Q_CHARS[flavor - 1] )))
+		|| strchr( callflavs, toupper( xuchar( Q_CHARS[flavor - 1] )))) : 0; 
 
 	q = q_add( fa );
 	q->touched = 1;

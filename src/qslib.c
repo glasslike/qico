@@ -45,7 +45,17 @@
 
 
 char *osname = "Unix";
+/* Plain package version. qcc prints this in its window. A dev commit
+ * belongs in version_id, so the screen does not change every build. */
 char version[] = PACKAGE_VERSION;
+
+/* Session ident and the -v line. QICO_VERSION_ID is PACKAGE_VERSION, or
+ * PACKAGE_VERSION-g<abbrev> when configure.ac saw a -dev version and a
+ * git commit. An old config.h without the define keeps the plain version. */
+#ifndef QICO_VERSION_ID
+#define QICO_VERSION_ID PACKAGE_VERSION
+#endif
+char version_id[] = QICO_VERSION_ID;
 
 /* Ident in qico -v and the EMSI banner brackets. QICO_SOURCE_DATE is the
  * UTC git-commit stamp baked by ./configure (see configure.ac), not
@@ -123,7 +133,7 @@ void *xrealloc(void *ptr, size_t size)
 void strlwr(char *s)
 {
 	while( s && *s ) {
-		*s = tolower( *s );
+		*s = tolower( xuchar( *s ));
 		s++;
 	}
 }
@@ -132,7 +142,7 @@ void strlwr(char *s)
 void strupr(char *s)
 {
 	while( s && *s ) {
-		*s = toupper( *s );
+		*s = toupper( xuchar( *s ));
 		s++;
 	}
 }
@@ -269,6 +279,36 @@ char *xstrcat(char *dst, const char *src, size_t siz)
 }
 
 
+/*
+ * Copy a, b and c into dst in that order. A NULL piece is skipped.
+ * dst is left empty and the function returns 0 when the pieces do not
+ * fit, so the caller does not use a chopped path or command.
+ */
+int pathfit(char *dst, size_t dstsz, const char *a, const char *b, const char *c)
+{
+	size_t	n = 1;
+
+	if ( !dst || dstsz == 0 )
+		return 0;
+	dst[0] = '\0';
+	if ( a )
+		n += strlen( a );
+	if ( b )
+		n += strlen( b );
+	if ( c )
+		n += strlen( c );
+	if ( n > dstsz )
+		return 0;
+	if ( a )
+		xstrcpy( dst, a, dstsz );
+	if ( b )
+		xstrcat( dst, b, dstsz );
+	if ( c )
+		xstrcat( dst, c, dstsz );
+	return 1;
+}
+
+
 char *xstrdup(const char *str)
 {
 	char	*s;
@@ -381,9 +421,9 @@ char *wktime_str(const char *flags)
 		}
 		if ( p[0] == 'T' && strlen( p ) == 3 ) {
 			snprintf( res, 79, "%02ld:%02d-%02ld:%02d",
-				( toupper( p[1] ) - 'A' + tz ) % 24,
+				( toupper( xuchar( p[1] )) - 'A' + tz ) % 24,
 				islower((int) p[1] ) ? 30 : 0,
-				( toupper( p[2] ) - 'A' + tz ) % 24,
+				( toupper( xuchar( p[2] )) - 'A' + tz ) % 24,
 				islower((int) p[2] ) ? 30 : 0 );
 			break;
 		}
@@ -743,7 +783,7 @@ void u_vers(const char *progn)
 {
 	struct utsname uts;
 
-	printf( "%s v%s [%s]\n", progn, version, cvsdate );
+	printf( "%s v%s [%s]\n", progn, version_id, cvsdate );
     
 	if( !uname( &uts ))
 		printf( "%s %s (%s), ", uts.sysname, uts.release, uts.machine );

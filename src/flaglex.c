@@ -1085,6 +1085,14 @@ char *yytext;
  **********************************************************/
 #define YY_NEVER_INTERACTIVE 1
 #define YY_NO_UNPUT 1
+/*
+ * flaglex.l asks for %option noinput. This copy of the scanner was
+ * generated before that option, so flex did not emit YY_NO_INPUT and
+ * still compiled the unused input() below. The prototype is already
+ * under #ifndef YY_NO_INPUT; defining the macro here leaves input()
+ * out, which is what a fresh flex run does.
+ */
+#define YY_NO_INPUT 1
 #line 7 "flaglex.l"
 
 #ifndef yywrap
@@ -1954,6 +1962,7 @@ register char *yy_bp;
 #endif	/* ifndef YY_NO_UNPUT */
 
 
+#ifndef YY_NO_INPUT
 #ifdef __cplusplus
 static int yyinput()
 #else
@@ -2025,6 +2034,7 @@ static int input()
 
 	return c;
 	}
+#endif	/* ifndef YY_NO_INPUT */
 
 
 #ifdef YY_USE_PROTOS

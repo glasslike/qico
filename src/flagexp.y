@@ -51,7 +51,8 @@ static int flxpres;
 %token AROP LOGOP EQ NE GT GE LT LE AND OR NOT XOR LB RB COMMA
 %token ADDRESS ITIME CONNSTR SPEED CONNECT PHONE MAILER CID
 %token FLTIME FLDATE EXEC FLLINE PORT FLFILE HOST SFREE
-%expect 2
+/* The grammar has two shift/reduce conflicts. bison -v should still
+ * report that number after this directive is removed. */
 
 %%
 fullline	: expression
@@ -140,7 +141,9 @@ static int logic(int e1, int op, int e2)
 
 static int checkflag(void)
 {
+#ifdef WITH_PERL
 	int fln;
+#endif
 	char *p, *q;
 	DEBUG(('Y',2,"checkflag: \"%s\"",yytext));
 #ifdef WITH_PERL

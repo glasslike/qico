@@ -312,8 +312,15 @@ static int aso_select(const char *d_name)
 	if ( strrchr( d_name, '.' ) == NULL )
 		return 0;
 
-	if ( sscanf( d_name, "%u.%u.%u.%u", &len, &len, &len, &len ) != 4 )
-		return 0;
+	{
+		/* The four numbers are only a shape check. %u stores an
+		 * unsigned int, which is not a size_t on LP64, and the parsed
+		 * value is discarded. */
+		unsigned int zone, net, node, point;
+
+		if ( sscanf( d_name, "%u.%u.%u.%u", &zone, &net, &node, &point ) != 4 )
+			return 0;
+	}
 
 	len = strlen( d_name ) - 4;
 	for( p = ext_lo; *p; p++ )
@@ -970,7 +977,7 @@ int outbound_setstatus(const ftnaddr_t *fa, sts_t *st)
 	if((f = mdfopen( name, "wt" ))) {
 		fprintf( f, "%d %d %lu %lu", st->try, st->flags, st->htime, st->utime );
 		if ( st->bp.name && st->bp.flags )
-			fprintf( f, " %d %d %lu %s", st->bp.flags, st->bp.size, st->bp.time, st->bp.name );
+			fprintf( f, " %d %lu %lu %s", st->bp.flags, (unsigned long) st->bp.size, st->bp.time, st->bp.name );
 		fclose( f );
 		return 1;
 	}
@@ -989,13 +996,21 @@ int outbound_getstatus(const ftnaddr_t *fa, sts_t *st)
 
 	if ( name ) {
 		if ((f = fopen( name, "rt" ))) {
-			rc = fscanf( f, "%d %d %lu %lu %d %d %lu %s",
-				&st->try, &st->flags,
-				(unsigned long*) &st->htime,
-				(unsigned long*) &st->utime,
-				&st->bp.flags, (int*) &st->bp.size,
-				(unsigned long*) &st->bp.time,
-				tmp );
+			{
+				/* bp.size is size_t. Read it as unsigned long, which
+				 * matches the %lu written by outbound_setstatus on
+				 * both ILP32 and LP64. */
+				unsigned long bp_size = 0;
+
+				rc = fscanf( f, "%d %d %lu %lu %d %lu %lu %s",
+					&st->try, &st->flags,
+					(unsigned long*) &st->htime,
+					(unsigned long*) &st->utime,
+					&st->bp.flags, &bp_size,
+					(unsigned long*) &st->bp.time,
+					tmp );
+				st->bp.size = (size_t) bp_size;
+			}
 			fclose( f );
 
 			if ( rc < 8 )

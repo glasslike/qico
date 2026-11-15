@@ -42,6 +42,7 @@
 #define NDL_EOPENLIST		10
 #define NDL_EREADLIST		11
 #define NDL_ENEEDCOMPILE	12
+#define NDL_EPATHLONG		13
 
 #define MAILHOURS	( checktimegaps( cfgs( CFG_MAILONLY )) || checktimegaps( cfgs( CFG_ZMH )))
 

@@ -41,7 +41,14 @@
 #define __QSLIB_H__
 
 extern	char progname[];
+/* Package version from AC_INIT, with no commit id. The qcc screen uses this. */
 extern	char version[];
+/*
+ * version plus, on a -dev build, "-g" and the git abbreviation baked by
+ * ./configure. qico -v, qcc -v, qctl -v, and the name sent to the other
+ * mailer use this. The qcc screen does not.
+ */
+extern	char version_id[];
 /* UTC source stamp from ./configure (git commit date, or make dist fallback). */
 extern	char cvsdate[];
 extern	char *osname;
@@ -97,7 +104,15 @@ extern	char *infostrs[];
 
 #define SS(str) ((str)?(str):"")
 
-#define XBLANK( str ) ( *(str) && isspace( *(str) ))
+/*
+ * ctype(3) and our own 256-slot tables are indexed by unsigned char.
+ * Plain char is signed on x86 and aarch64, so a byte in 128..255 must be
+ * widened before use. Do not pass EOF through this macro: (unsigned char)EOF
+ * is 255, not the end-of-file indicator.
+ */
+#define xuchar(c) ((int)(unsigned char)(c))
+
+#define XBLANK( str ) ( *(str) && isspace( xuchar( *(str) )))
 #define xmalloc(n) _xmalloc((size_t)(n))
 #define xcalloc(n,s) _xcalloc((size_t)(n),(size_t)(s))
 
@@ -118,6 +133,7 @@ void	skip_blanksr(char *);
 
 char	*xstrcpy(char *, const char *, size_t);
 char	*xstrcat(char *, const char *, size_t);
+int	pathfit(char *, size_t, const char *, const char *, const char *);
 
 void	bin2strhex(void *, const void *, size_t);
 int	strhex2bin(void *, const void *);

@@ -387,7 +387,8 @@ FILE *openpktmsg(const ftnaddr_t *fa, const ftnaddr_t *ta,
 	if(fa->p)fprintf(f,"\001FMPT %d\r",fa->p);
 	if(ta->p)fprintf(f,"\001TOPT %d\r",ta->p);
 	fprintf(f,"\001MSGID: %s %08lx\r",ftnaddrtoa(fa),sequencer());
-	fprintf(f,"\001PID: %s %s/%s\r",progname,version,osname);
+	/* version_id, so a dev build names the same commit here as in the session. */
+	fprintf(f,"\001PID: %s %s/%s\r",progname,version_id,osname);
 	return f;
 }
 
@@ -433,7 +434,7 @@ int whattype(const char *fn)
 			case 7: return IS_PKT;
 			case 8: return IS_REQ;
 			default:
-				low = tolower( p[2] );
+				low = tolower( xuchar( p[2] ));
 				if (( low >= '0' && low <= '9' )
 					|| ( low >= 'a' && low <= 'z' ))
 					return IS_ARC;

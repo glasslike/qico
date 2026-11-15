@@ -116,7 +116,9 @@ if [ -z "$version" ]; then
 	exit 1
 fi
 
-sha="$(git rev-parse --short=12 HEAD)"
+# Seven hex digits, the same abbreviation a -dev version uses after -g.
+# The zip name has no g: qico-0.60.4-dev-netbsd11-amd64-a9d086b.zip.
+sha="$(git rev-parse --short=7 HEAD)"
 when="$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M')"
 # uname -r is "11.0"; the drop is named after the major release only.
 # uname -m is the NetBSD architecture name, amd64 on x86_64.

@@ -211,7 +211,6 @@ int ls_zrecvhdr(byte *hdr, int *hlen, int timeout)
 	static long crc = 0;			/* Received CRC */
 	static int len = 4;			/* Length of header (4 is default) */
 	static int got = 0;			/* Number of header bytes already got */
-	static int inhex = 0;
 	int c = -1;
 	int rc;
 
@@ -226,7 +225,6 @@ int ls_zrecvhdr(byte *hdr, int *hlen, int timeout)
 		incrc = LSZ_INIT_CRC16;
 		len = 4;
 		got = 0;
-		inhex = 0;
 		readmode = rm7BIT;
 	}
 

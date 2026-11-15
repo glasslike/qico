@@ -18,11 +18,15 @@ EXTRA_DIST = FAQ Changes autogen.sh \
 	debian/qico-common.install
 
 # Bake the configure-time git stamp into the tarball so a git-less
-# extract still gets a real date instead of "unknown". Not a srcdir file;
-# only appears inside $(distdir).
+# extract still gets a real date, and a -dev build still gets its
+# commit abbreviation. Not srcdir files; they only appear inside
+# $(distdir).
 dist-hook:
 	if test "$(QICO_SOURCE_DATE)" != unknown && test -n "$(QICO_SOURCE_DATE)"; then \
 		echo "$(QICO_SOURCE_DATE)" > "$(distdir)/src/source-date"; \
+	fi
+	if test -n "$(QICO_GIT_ABBREV)"; then \
+		echo "$(QICO_GIT_ABBREV)" > "$(distdir)/src/source-commit"; \
 	fi
 
 distclean-hook:

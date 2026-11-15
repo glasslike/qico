@@ -475,22 +475,75 @@ void md5_cram_set(const unsigned char *challenge)
 }
 
 
+/*
+ * Fill dst from the kernel random source. The challenge is sent as
+ * raw bytes; its entropy is the entropy of this read. /dev/urandom
+ * does not block on a modern kernel once it has been seeded.
+ * Returns 1 on a full read.
+ */
+static int md5_os_random(unsigned char *dst, size_t n)
+{
+	int fd;
+	size_t got = 0;
+
+	fd = open( "/dev/urandom", O_RDONLY );
+	if ( fd < 0 )
+		return 0;
+	while ( got < n ) {
+		ssize_t r = read( fd, dst + got, n - got );
+
+		if ( r < 0 ) {
+			if ( errno == EINTR )
+				continue;
+			close( fd );
+			return 0;
+		}
+		if ( r == 0 ) {
+			close( fd );
+			return 0;
+		}
+		got += (size_t) r;
+	}
+	close( fd );
+	return 1;
+}
+
+
+/*
+ * Last resort when /dev/urandom cannot be read. The mix is time, pid
+ * and random(), then HMAC-MD5 so the bytes are not a raw timestamp.
+ * It is not a secret from anyone who can see the clock and the pid.
+ * The length is passed explicitly: the old call used strlen() on these
+ * bytes and stopped at the first zero.
+ */
+static void md5_weak_challenge(unsigned char *dst)
+{
+	unsigned char block[MD5_DIGEST_LEN];
+	md_caddr_t key, digest;
+
+	memset( block, 0, sizeof( block ));
+	memset( key, 0, sizeof( key ));
+	STORE32( block, time( NULL ));
+	STORE32( block + 4, random() );
+	STORE32( block + 8, getpid() ^ random() );
+	STORE32( block + 12, (( random() << 4 ) + ( time( NULL ) & 0xff )));
+	STORE32( key, getpid() );
+	hmac_md5( block, MD5_DIGEST_LEN, key, MD5_DIGEST_LEN, digest );
+	memcpy( dst, digest, MD5_DIGEST_LEN );
+}
+
+
 unsigned char *md5_challenge(const unsigned char *buf)
 {
     unsigned char *ret = NULL;
 
     if ( buf == NULL ) {		/* Make new challenge */
-        md_caddr_t digest;
         ret = (unsigned char *) xcalloc( 1, MD_CHALLENGE_LEN + 1 );
-
-        STORE32( ret, time( NULL ));
-        STORE32( ret + 4, random() );
-        STORE32( ret + 8, getpid() ^ random() );
-        STORE32( ret + 12, (( random() << 4 ) + ( time( NULL ) & 0xff )));
-        STORE32( digest, getpid() );
-        hmac_md5( ret, strlen((char *) ret ), digest, MD5_DIGEST_LEN, digest );
-        memcpy( ret + 1, digest, MD5_DIGEST_LEN );
         *ret = MD5_DIGEST_LEN;
+        if ( !md5_os_random( ret + 1, MD5_DIGEST_LEN )) {
+            write_log( "Binkp: /dev/urandom unavailable, CRAM challenge uses a weaker mix" );
+            md5_weak_challenge( ret + 1 );
+        }
     } else {				/* Decode challenge */
         char *n;
         int count;
@@ -500,7 +553,7 @@ unsigned char *md5_challenge(const unsigned char *buf)
         if (( n = strstr( n, "MD5" )) == NULL )
             return NULL;
         while( *n && *n++ != '-' );
-        if ( !*n || !isxdigit( *n ))
+        if ( !*n || !isxdigit( xuchar( *n )))
             return NULL;
         count = strspn( n, hexdigitsall );
         if ( !count )
