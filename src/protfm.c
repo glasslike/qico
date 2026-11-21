@@ -117,6 +117,40 @@ static char *estimatedtime(off_t size, int cps, unsigned long baud)
 }
 
 /*
+ * CPS of the previous receive, sampled before rxopen() overwrites
+ * recvf.start. A transfer shorter than two seconds is ignored, same
+ * as the old inline estimate.
+ */
+static int rx_prevcps;
+
+/*
+ * One "start recv" line for a receive that will take data.
+ * rxopen() only opens the file. The protocol calls this once it
+ * has decided the bytes are coming. soff > 0 is a resumed temp,
+ * so the estimate covers the tail. BinkP skips this call when the
+ * offer is answered with M_GET: offset -1, or an offset that does
+ * not match the bytes already in the temp.
+ */
+void rx_log_start(void)
+{
+	off_t left;
+
+	if ( !cfgi( CFG_ESTIMATEDTIME ))
+		return;
+	if ( recvf.soff > 0 ) {
+		left = recvf.ftot - recvf.soff;
+		if ( left < 0 )
+			left = 0;
+		write_log( "start recv: %s, %lu bytes (from %lu), estimated time %s",
+			recvf.fname, (long) recvf.ftot, (long) recvf.soff,
+			estimatedtime( left, rx_prevcps, effbaud ));
+	} else
+		write_log( "start recv: %s, %lu bytes, estimated time %s",
+			recvf.fname, (long) recvf.ftot,
+			estimatedtime( recvf.ftot, rx_prevcps, effbaud ));
+}
+
+/*
  * BinkP M_FILE time is Unix UTC (the binkp spec, same as binkd).
  * EMSI, Zmodem, Hydra and Janus carry local time, so those sessions
  * add the zone offset on send and subtract it on receive.
@@ -136,7 +170,10 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 	struct stat sb;
 	slist_t *i;
 	char p[MAX_PATH + 5], bn[MAX_PATH + 5];
-	int prevcps = (recvf.start&&(time(NULL)-recvf.start>2))?recvf.cps:effbaud/10,rc;
+	int rc;
+
+	rx_prevcps = ( recvf.start && ( time( NULL ) - recvf.start > 2 ))
+		? recvf.cps : effbaud / 10;
 
 	if(!name || !*name) return FOP_ERROR;
 	xstrcpy(bn, qbasename(name), MAX_PATH);
@@ -211,10 +248,6 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 				return FOP_SUSPEND;
 			}
 			recvf.foff = recvf.soff = ftello( *f );
-			if(cfgi(CFG_ESTIMATEDTIME)) {
-				write_log("start recv: %s, %lu bytes (from %lu), estimated time %s",
-					recvf.fname, (long) rsize, (long) recvf.soff, estimatedtime(rsize-recvf.soff,prevcps,effbaud));
-			}
 			return FOP_CONT;
 		}
 	}
@@ -227,10 +260,6 @@ int rxopen(char *name, time_t rtime, off_t rsize, FILE **f)
 		return FOP_SUSPEND;
 	}
 	recvf.foff=recvf.soff=0;
-	if(cfgi(CFG_ESTIMATEDTIME)) {
-		write_log("start recv: %s, %lu bytes, estimated time %s",
-			recvf.fname, (long) rsize, estimatedtime(rsize,prevcps,effbaud));
-	}
 	return FOP_OK;
 }
 
@@ -317,6 +346,118 @@ int rxclose(FILE **f, int what)
 	recvf.start=0;recvf.ftot=0;
 	rxstatus=0;
 	return what;
+}
+
+/*
+ * ND receive. The file is complete and synced, but it stays under
+ * inbound/tmp until the peer proves it saw M_GOT: the next M_FILE
+ * or M_EOB. A dropped session leaves the temp, and the sender still
+ * has the source, so the batch can be repeated without a hole and
+ * without a second copy in inbound.
+ *
+ * One file is held. The numbers are the ones rxclose() would have
+ * used; the name is our own copy because the live recvf is reused
+ * for the next offer.
+ */
+static pfile_t	parked;
+static int	have_park;
+
+static int tmp_path(char *dst, size_t dstsz, const char *bn)
+{
+	if ( !bn || !*bn || !cfgs( CFG_INBOUND ))
+		return 0;
+	return pathfit( dst, dstsz, cfgs( CFG_INBOUND ), "/tmp/", bn );
+}
+
+int rx_tmp_done(const char *bn, off_t size, time_t mtime)
+{
+	char p[MAX_PATH + 5];
+	struct stat sb;
+
+	if ( size < 0 || !tmp_path( p, sizeof( p ), bn ))
+		return 0;
+	if ( stat( p, &sb ) || !S_ISREG( sb.st_mode ))
+		return 0;
+	return sb.st_size == size && sb.st_mtime == mtime;
+}
+
+static void park_copy(const char *bn, time_t mtime, off_t size, off_t got, off_t from, time_t started)
+{
+	memset( &parked, 0, sizeof( parked ));
+	parked.fname = xstrdup( bn );
+	parked.mtime = mtime;
+	parked.ftot = (int) size;
+	parked.foff = (int) got;
+	parked.soff = (int) from;
+	parked.start = started;
+	have_park = 1;
+}
+
+int rxpark(FILE **f)
+{
+	char p[MAX_PATH + 5];
+	struct utimbuf ut;
+
+	if ( have_park || !f || !*f || !recvf.fname )
+		return FOP_ERROR;
+	if ( fflush( *f ) || fsync( fileno( *f ))) {
+		fclose( *f );
+		*f = NULL;
+		return FOP_ERROR;
+	}
+	fclose( *f );
+	*f = NULL;
+	if ( !tmp_path( p, sizeof( p ), recvf.fname ))
+		return FOP_ERROR;
+	ut.actime = ut.modtime = recvf.mtime;
+	utime( p, &ut );
+	park_copy( recvf.fname, recvf.mtime, recvf.ftot, recvf.foff, recvf.soff, recvf.start );
+	recvf.start = 0;
+	return FOP_OK;
+}
+
+int rxhold_name(const char *bn, time_t mtime, off_t size)
+{
+	if ( have_park || !bn || !*bn )
+		return FOP_ERROR;
+	park_copy( bn, mtime, size, size, 0, 0 );
+	return FOP_OK;
+}
+
+int rxunpark(void)
+{
+	FILE *f;
+	char p[MAX_PATH + 5];
+	pfile_t saved;
+
+	if ( !have_park )
+		return FOP_OK;
+	have_park = 0;
+	saved = parked;
+	parked.fname = NULL;
+	xfree( recvf.fname );
+	recvf = saved;
+	if ( !recvf.fname || !tmp_path( p, sizeof( p ), recvf.fname )) {
+		xfree( recvf.fname );
+		recvf.fname = NULL;
+		return FOP_ERROR;
+	}
+	f = fopen( p, "rb" );
+	if ( !f ) {
+		write_log( "can't reopen %s: %s", p, strerror( errno ));
+		xfree( recvf.fname );
+		recvf.fname = NULL;
+		return FOP_ERROR;
+	}
+	return rxclose( &f, FOP_OK );
+}
+
+void rxpark_drop(void)
+{
+	if ( have_park )
+		xfree( parked.fname );
+	memset( &parked, 0, sizeof( parked ));
+	have_park = 0;
 }
 
 /* Temp path of a share-rewritten pkt opened by txopen(); cleared in txclose(). */

@@ -42,6 +42,7 @@ typedef struct _flist_t {
 	off_t loff;
 	int type;
 	int suspend;
+	int held;		/* BinkP ND: M_GOT seen, remove at session end */
 } flist_t;
 
 slist_t		*slist_add(slist_t **, const char *);

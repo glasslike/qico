@@ -195,36 +195,101 @@ static int binkp_init(int to)
 	bps->init = 1;
 	bps->got_adr = 0;
 
-	for( p = cfgs( CFG_BINKPOPT ); *p; p++ ) {
-		switch(tolower(xuchar(*p))) {
-		case 'p':					/* Force password digest */
-			bps->opt_md |= O_NEED;
+	/*
+	 * Config letters are the whole starting set. Clear first:
+	 * OR-ing onto a session that already ran would keep a mode
+	 * the config no longer asks for.
+	 */
+	bps->opt_nr = O_NO;
+	bps->opt_nd = O_NO;
+	bps->opt_md = O_NO;
+	bps->opt_cr = O_NO;
+	bps->opt_mb = O_NO;
+	bps->opt_cht = O_NO;
+	p = cfgs( CFG_BINKPOPT );
+	if ( !p )
+		p = "";
+	for ( ; *p; p++ ) {
+		int c;
 
-		case 'm':					/* Want password digest */
+		if ( *p == ' ' || *p == '\t' )
+			continue;
+
+		/* ASCII fold. tolower() depends on locale and is
+		 * the wrong tool for a fixed set of config letters. */
+		c = (unsigned char) *p;
+		if ( c >= 'A' && c <= 'Z' )
+			c = c - 'A' + 'a';
+
+		switch ( c ) {
+		case 'p':
+			/*
+			 * Require a CRAM-MD5 digest, and offer one.
+			 * O_NEED without O_WANT would reject a clear
+			 * password on an answer without ever sending
+			 * the challenge the peer needs to build the
+			 * digest. Both bits here, not a fall-through
+			 * into 'm': the two letters must stay independent.
+			 */
+			bps->opt_md |= O_NEED | O_WANT;
+			break;
+
+		case 'm':
+			/* Offer CRAM-MD5. A clear password is still
+			 * accepted when the peer sends no digest. */
 			bps->opt_md |= O_WANT;
 			break;
 
-		case 'c':					/* Can crypt */
+		case 'c':
+			/* We can crypt. The session turns it on only
+			 * when the peer also sends CRYPT, the password
+			 * matched, and the digest mode is on. */
 			bps->opt_cr |= O_WE;
 			break;
 
-		case 'd':					/* No dupes mode */
-			bps->opt_nd |= O_NO; /*mode?O_THEY:O_NO;*/
-
-		case 'r':					/* Non-reliable mode */
-			bps->opt_nr |= to ? O_WANT : O_NO;
+		case 'd':
+			/*
+			 * Request ND. FSP-1027 says ND implies NR: the
+			 * caller sends OPT NR together with OPT ND, and
+			 * a partial left by a dropped batch is resumed
+			 * from the bytes the receiver already has.
+			 * Without NR the next offer starts at offset 0
+			 * and that partial cannot be used. The handshake
+			 * still drops ND when the peer has neither ND
+			 * nor NDA. This case must not fall through into
+			 * 'r': that used to request NR and leave ND off.
+			 */
+			bps->opt_nd |= O_THEY;
+			bps->opt_nr |= O_WANT;
 			break;
 
-		case 'b':					/* Multi-batch mode */
+		case 'r':
+			/*
+			 * Request non-reliable mode only when we place
+			 * the call. An answer does not advertise NR
+			 * from this letter; the caller's OPT NR is
+			 * what enables it.
+			 */
+			if ( to )
+				bps->opt_nr |= O_WANT;
+			break;
+
+		case 'b':
+			/* Advertise multi-batch. A peer at binkp/1.1
+			 * still gets MB in the handshake even without
+			 * this letter; the letter is the advertisement. */
 			bps->opt_mb |= O_WANT;
 			break;
 
-		case 't':					/* Chat */
+		case 't':
+			/* Advertise chat. Chat runs only when the peer
+			 * also sends OPT CHAT. */
 			bps->opt_cht |= O_WANT;
 			break;
 
 		default:
 			write_log( "Binkp: unknown binkpopt: '%c'", *p );
+			break;
 		}
 	}
 
@@ -251,6 +316,8 @@ static void binkp_deinit(void)
 			xfree( bps->mqueue[i].msg );
 	xfree( bps->mqueue );
 
+	rxpark_drop();
+	xfree( bps->ostatus.bp.name );
 	xfree( bps );
 }
 
@@ -1067,6 +1134,57 @@ static void binkp_mark_listed(void)
 		rnode->options |= O_LST;
 }
 
+/*
+ * Inbound, once the caller's OPT has been seen and before we answer.
+ * binkd does this in PWD(): ND without NDA is symmetric, and a
+ * configured ND is dropped when the caller supports neither.
+ * Outbound keeps the bits until M_OK, which drops a one-sided ND
+ * that came without NDA.
+ */
+static void binkp_nd_answer(BPS *bp)
+{
+	if (( bp->opt_nd & O_WE ) && !( bp->opt_nd & O_EXT ))
+		bp->opt_nd |= O_THEY;
+	if ( !( bp->opt_nd & O_WE ) && !( bp->opt_nd & O_EXT ))
+		bp->opt_nd &= ~O_THEY;
+}
+
+
+/*
+ * FSP-1027 keeps the M_GOT line on disk before the outbound file
+ * is removed. The next session offers that line first, with no
+ * payload, so a peer that still has the temp can rename it.
+ * Failure leaves the outbound file in place.
+ */
+static int nd_status_write(BPS *bp, const char *name, long size, time_t mtime)
+{
+	ftnaddr_t *fa;
+
+	if ( !rnode || !rnode->addrs || !name || !*name )
+		return 0;
+	fa = &rnode->addrs->addr;
+	if ( !outbound_put_bpstatus( fa, name, (size_t) size, mtime ))
+		return 0;
+	xfree( bp->ostatus.bp.name );
+	bp->ostatus.bp.name = xstrdup( name );
+	bp->ostatus.bp.size = (size_t) size;
+	bp->ostatus.bp.time = mtime;
+	bp->ostatus.bp.flags = 1;
+	return 1;
+}
+
+static void nd_status_clear(BPS *bp)
+{
+	if ( !rnode || !rnode->addrs )
+		return;
+	if ( !bp->ostatus.bp.name )
+		return;
+	if ( !outbound_put_bpstatus( &rnode->addrs->addr, NULL, 0, 0 ))
+		return;
+	xfree( bp->ostatus.bp.name );
+	memset( &bp->ostatus.bp, 0, sizeof( bp->ostatus.bp ));
+}
+
 
 /*
  * Completes binkp handshake
@@ -1155,7 +1273,7 @@ static int binkp_hsdone(BPS *bp)
 		( rnode->options & O_PWD ) ? "/PWD" : "",
 		( bp->opt_nr & O_WE ) ? "/NR" : "",
 		(( bp->opt_nd & O_WE ) && ( bp->opt_nd & O_THEY )) ? "/ND" : "",
-		(( bp->opt_nd & O_WE ) && !( bp->opt_nd & O_THEY ) && (bp->opt_nd & O_EXT )) ? "/NDA" : "",
+		(( !( bp->opt_nd & O_WE )) != ( !( bp->opt_nd & O_THEY ))) ? "/NDA" : "",
 		( bp->opt_mb == O_YES ) ? "/MB" : "",
 		( bp->opt_md == O_YES ) ? "/MD5" : "/Plain",
 		( bp->opt_cr == O_YES ) ? "/CRYPT" : "",
@@ -1314,13 +1432,30 @@ static int binkp_repeat_limit(BPS *bp, const char *fname, long fsize)
  * block does it: otherwise the sender keeps the file and offers it
  * again. Anything short stays in inbound/tmp and is not acknowledged.
  * Publishing it would hand the tosser a truncated packet.
+ *
+ * ND parks a file when its last byte arrives. The next M_FILE or
+ * M_EOB is the proof that M_GOT got there, so a file still open
+ * at that point (an empty one has no data frame) is published
+ * here too. rxunpark() publishes the one that was parked earlier.
+ * Returns 0 when a held file could not be published.
  */
-static void binkp_recv_abandon(BPS *bp, const char *why)
+static int binkp_recv_abandon(BPS *bp, int eob)
 {
 	char	tmp[512];
 
+	/* Both the next file and M_EOB confirm a finished receive. */
+	(void) eob;
+
+	if ( rxunpark() != FOP_OK ) {
+		write_log( "Binkp: can't publish held file" );
+		binlog_set_result( "save error" );
+		msgs( BPM_ERR, "Local error saving file" );
+		bp->rc = bp->to ? ( S_REDIAL | S_ADDTRY ) : S_BUSY;
+		return 0;
+	}
+
 	if ( !bp->recv_file )
-		return;
+		return 1;
 
 	/*
 	 * Quote the token the peer sent. A disk name can differ, and the
@@ -1332,6 +1467,14 @@ static void binkp_recv_abandon(BPS *bp, const char *why)
 		bp->rftime ? bp->rftime : "0" );
 
 	if ( recvf.ftot >= 0 && bp->rxpos == (size_t) recvf.ftot ) {
+		/*
+		 * This M_FILE or M_EOB is the confirmation FSP-1027
+		 * waits for, so a file still open here is published.
+		 * Holding it would fill the one park slot and the
+		 * file that follows could not be saved. The usual
+		 * path parked the file in store_data(); rxunpark()
+		 * above is what publishes that one.
+		 */
 		if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
 			msgs( BPM_SKIP, "%s", tmp );
 			sline( "Binkp: file close error" );
@@ -1340,15 +1483,15 @@ static void binkp_recv_abandon(BPS *bp, const char *why)
 		} else
 			msgs( BPM_GOT, "%s", tmp );
 	} else {
-		write_log( "Binkp: \"%s\" closed unfinished (%lu of %lu), %s",
+		write_log( "Binkp: \"%s\" closed unfinished (%lu of %lu)",
 			recvf.fname ? recvf.fname : "file",
 			(unsigned long) bp->rxpos,
-			(unsigned long) recvf.ftot,
-			why );
+			(unsigned long) recvf.ftot );
 		rxclose( &rxfd, FOP_SUSPEND );
 	}
 	bp->recv_file = 0;
 	qpfrecv();
+	return 1;
 }
 
 
@@ -1373,7 +1516,8 @@ static int M_file(BPS *bp, byte *arg)
 	bp->cls = 1;
 	bp->recv_eob = 0;
 
-	binkp_recv_abandon( bp, "next file offered" );
+	if ( !binkp_recv_abandon( bp, 0 ))
+		return 0;
 
 	parsed = file_parse( buf, &fname, &fsize, NULL, &time_tok, &foffs,
 		&size_tok, 1 );
@@ -1446,6 +1590,37 @@ static int M_file(BPS *bp, byte *arg)
 	if ( strcmp( fname, disk ) != 0 )
 		write_log( "Binkp: file name \"%s\" stored as \"%s\"", fname, disk );
 
+	/*
+	 * A previous ND batch finished the bytes and then dropped
+	 * before the rename. The sender is offering it again (a real
+	 * file, or binkd's status replay). Do not truncate the temp.
+	 * Without ND the rename happens now. An offer whose offset
+	 * is the file size is FSP-1027's confirmation, so the temp
+	 * is renamed now even in ND. Any other reoffer only acks;
+	 * M_EOB or the next different file does the rename.
+	 */
+	if ( rx_tmp_done( disk, (off_t) fsize, local )) {
+		int confirm = ( foffs >= 0 && foffs == fsize );
+
+		write_log( "Binkp: \"%s\" already complete", disk );
+		if ( rxhold_name( disk, local, (off_t) fsize ) != FOP_OK
+			|| ( ( confirm || !( bp->opt_nd & O_THEY )) && rxunpark() != FOP_OK )) {
+			write_log( "Binkp: can't publish \"%s\"", disk );
+			binlog_set_result( "save error" );
+			msgs( BPM_ERR, "Local error saving file" );
+			bp->rc = bp->to ? ( S_REDIAL | S_ADDTRY ) : S_BUSY;
+			return 0;
+		}
+		msgs( BPM_GOT, "%s %lu %s", bp->rfname, (long) fsize,
+			bp->rftime ? bp->rftime : "0" );
+		return 1;
+	}
+
+	/*
+	 * rxopen() does not log. "start recv" is only true once this
+	 * offer is the bytes themselves. Offset -1, and any offer
+	 * that does not match the temp, is answered with M_GET.
+	 */
 	switch( rxopen( disk, local, fsize, &rxfd )) {
 	case FOP_ERROR:
 		write_log( "Binkp: error open file for write \"%s\"", recvf.fname );
@@ -1466,10 +1641,25 @@ static int M_file(BPS *bp, byte *arg)
 				bp->opt_nr |= O_THEY;
 			bp->recv_file = 1;
 			bp->rxpos = 0;
+			rx_log_start();
 			break;
 		}
 
 	case FOP_CONT:
+		/*
+		 * A short temp is already on disk. Offset -1 asks
+		 * where to resume, and a different offset is answered
+		 * with M_GET too. The offset that names the byte we
+		 * already have is the tail itself: read it. Leaving
+		 * recv_file clear dropped that tail, so a file cut
+		 * by a lost link could never be finished.
+		 */
+		if ( foffs >= 0 && (off_t) foffs == recvf.soff ) {
+			bp->recv_file = 1;
+			bp->rxpos = (size_t) recvf.soff;
+			rx_log_start();
+			break;
+		}
 		DEBUG(('B',2,"trying to get file \"%s\" from offset %ld",
 			recvf.fname, (long) recvf.soff ));
 		msgs( BPM_GET, "%s %lu %s %ld", bp->rfname, (long) recvf.ftot,
@@ -1598,6 +1788,8 @@ static int M_pwd(BPS *bp, byte *arg)
 		}
 	}
 
+	binkp_nd_answer( bp );
+
 	snprintf( tmp, 128, "%s%s%s%s%s%s",
 		( bp->opt_nr & O_WANT ) ? " NR" : "",
 		( bp->opt_nd & O_THEY ) ? " ND" : "",
@@ -1672,7 +1864,8 @@ static int M_eob(BPS *bp, byte *arg)
 	}
 	*/
 
-	binkp_recv_abandon( bp, "end of batch" );
+	if ( !binkp_recv_abandon( bp, 1 ))
+		return 0;
 
 	bp->recv_eob = 1;
 	bp->delay_eob = 0;
@@ -1750,6 +1943,28 @@ static int M_get(BPS *bp, byte *arg)
 		return 1;
 	}
 	if ( parsed ) {
+		if ( bp->nd_stat && sendf.fname
+			&& !strncasecmp( fname, sendf.fname, MAX_PATH )
+			&& sendf.mtime == ftime && sendf.ftot == fsize )
+		{
+			/*
+			 * Status replay has no local file. Offset 0 means
+			 * the peer already stored it and must not be sent
+			 * the bytes again. Offset at the end means the
+			 * temp is complete: one empty data frame lets the
+			 * peer finish and answer M_GOT.
+			 */
+			if ( foffs < 0 )
+				foffs = 0;
+			bp->wait_for_get = 0;
+			bp->txpos = (size_t) foffs;
+			binkp_put_time( tbuf, sizeof( tbuf ), sendf.mtime );
+			msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname, (long) sendf.ftot,
+				tbuf, foffs );
+			if ( foffs == 0 || foffs == sendf.ftot )
+				bp->send_eof = 1;
+			return 1;
+		}
 		if ( bp->send_file && sendf.fname
 			&& !strncasecmp( fname,sendf. fname, MAX_PATH)
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
@@ -1765,6 +1980,8 @@ static int M_get(BPS *bp, byte *arg)
 				binkp_put_time( tbuf, sizeof( tbuf ), sendf.mtime );
 				msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname, (long) sendf.ftot,
 					tbuf, foffs );
+				if ( foffs == sendf.ftot )
+					bp->send_eof = 1;
 			}
 		} else
 			write_log( "Binkp: got M_GET for unknown file" );
@@ -1801,6 +2018,25 @@ static int M_gotskip(BPS *bp, byte *arg)
         	if ( sendf.fname && !strncasecmp( fname, sendf.fname, MAX_PATH )
 			&& sendf.mtime == ftime && sendf.ftot == fsize )
 		{
+			if ( bp->nd_stat ) {
+				/*
+				 * The queue file is already gone. M_GOT on
+				 * the saved line (including a GOT that
+				 * answers M_FILE -1, before any M_GET)
+				 * drops the line. M_SKIP keeps it. There
+				 * is nothing to flexecute.
+				 */
+				bp->nd_stat = 0;
+				bp->send_file = 0;
+				bp->send_eof = 0;
+				bp->wait_for_get = 0;
+				bp->wait_got = 0;
+				if ( id == BPM_GOT )
+					nd_status_clear( bp );
+				qpfsend();
+				return 1;
+			}
+
 			if ( bp->send_file ) {
 				DEBUG(('B',1,"file %s %s",
 					sendf.fname,
@@ -1816,16 +2052,35 @@ static int M_gotskip(BPS *bp, byte *arg)
 			}
         
 			if ( bp->wait_got ) {
+				int nd_saved = 0;
+
 				DEBUG(('B',1,"file %s %s",
 					sendf.fname,
 					( id == BPM_GOT ) ? "done" : "suspended"));
 				
 				bp->wait_got = 0;
+				if ( id == BPM_GOT && ( bp->opt_nd & O_WE )) {
+					nd_saved = nd_status_write( bp, sendf.fname,
+						(long) sendf.ftot, sendf.mtime );
+					/*
+					 * The line is for the next session.
+					 * Offering it again now makes the peer
+					 * ack the same file twice and clears
+					 * the line before M_EOB.
+					 */
+					if ( nd_saved )
+						bp->nd_stat_sent = 1;
+				}
 				txclose( &txfd, ( id == BPM_GOT ) ? FOP_OK : FOP_SUSPEND );
-            
-				bp->ticskip = ( id == BPM_GOT ) ? 0 : 2;
-				bp->oflist->suspend = ( id == BPM_SKIP );
-				flexecute( bp->oflist );
+				if ( id == BPM_GOT && ( bp->opt_nd & O_WE ) && !nd_saved && bp->oflist ) {
+					bp->oflist->held = 1;
+					bp->ticskip = 0;
+					write_log( "ND status not saved, %s kept", sendf.fname );
+				} else {
+					bp->ticskip = ( id == BPM_GOT ) ? 0 : 2;
+					bp->oflist->suspend = ( id == BPM_SKIP );
+					flexecute( bp->oflist );
+				}
 				qpfsend();
 			} else
 				write_log( "Binkp: got M_%s for unknown file", mess[id] );
@@ -1924,6 +2179,19 @@ static int binkp_send(BPS *bp)
 				xfree( bp->mqueue );
 				bp->nmsgs = 0;
 			}
+		} else if ( bp->send_eof ) {
+			/*
+			 * One empty data frame. binkd finishes a file only
+			 * when a data frame arrives, including a file whose
+			 * temp is already the full size (FSP-1027 replay).
+			 */
+			mkheader( bp->tx_buf, 0 );
+			if ( bp->opt_cr == O_YES )
+				encrypt_buf( (void *) bp->tx_buf, BLK_HDR_SIZE, bp->keys_out );
+			bp->tx_left = BLK_HDR_SIZE;
+			bp->send_eof = 0;
+			bp->wait_got = 1;
+			bp->send_file = 0;
 		} else if ( bp->send_file && txfd && !bp->wait_for_get ) {
 			int blksz = MIN( BP_BLKSIZE, sendf.ftot - bp->txpos );
 
@@ -2045,7 +2313,13 @@ static int store_data(BPS *bp)
 				return 1;
 			}
 			bp->recv_file = 0;
-			if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
+			if ( bp->opt_nd & O_THEY ) {
+				if ( rxpark( &rxfd ) != FOP_OK ) {
+					write_log( "can't hold %s", recvf.fname );
+					msgs( BPM_SKIP, tmp );
+				} else
+					msgs( BPM_GOT, tmp );
+			} else if ( rxclose( &rxfd, FOP_OK ) != FOP_OK ) {
 				msgs( BPM_SKIP, tmp );
 				sline( "Binkp: file close error" );
 				write_log( "can't close %s, suspended", recvf.fname );
@@ -2082,12 +2356,20 @@ static int binkp_recv(BPS *bp)
 			if ( EWBOEA() )
 				return 1;
 			else {
+				/*
+				 * Same as a dropped carrier. The open temp
+				 * must be closed and stamped with the
+				 * protocol time, or the next session will
+				 * not recognise it and will truncate it.
+				 */
+				ERR_CLOSE( bp );
 				bp->error = 1;
 				return 0;
 			}
 		} else if ( readsz == 0 ) {
 			write_log( "rcvd: connection closed by remote host" );
 			binlog_set_result( "connection closed" );
+			ERR_CLOSE( bp );
 			bp->error = -2;
 			return 0;
 		}
@@ -2282,7 +2564,41 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 		DEBUG(('B',3,"init: %d, send_file: %d, sent_eob: %d, txfd: %.8p, nofiles: %d",
 			bps->init, bps->send_file, bps->sent_eob, txfd, bps->nofiles));
 
-		if ( !bps->init && !bps->send_file && !bps->sent_eob && !txfd && !bps->nofiles ) {
+		/*
+		 * FSP-1027: a saved M_GOT line is offered before any new
+		 * file, even when this session did not negotiate ND.
+		 * The peer still holding the temp can rename it.
+		 */
+		if ( !bps->init && !bps->nd_stat_sent && bps->ostatus.bp.name
+			&& !bps->send_file && !bps->wait_got && !bps->wait_for_get && !txfd )
+		{
+			char tbuf[32];
+
+			bps->nd_stat_sent = 1;
+			bps->nd_stat = 1;
+			bps->send_file = 1;
+			xfree( sendf.fname );
+			sendf.fname = xstrdup( bps->ostatus.bp.name );
+			sendf.ftot = (int) bps->ostatus.bp.size;
+			sendf.mtime = bps->ostatus.bp.time;
+			sendf.foff = sendf.soff = 0;
+			binkp_put_time( tbuf, sizeof( tbuf ), sendf.mtime );
+			if ( bps->opt_nr & O_WE ) {
+				bps->txpos = (size_t) -1;
+				bps->wait_for_get = 1;
+				msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname,
+					(long) sendf.ftot, tbuf, (long) -1 );
+			} else {
+				bps->wait_for_get = 0;
+				bps->txpos = (size_t) sendf.ftot;
+				msgs( BPM_FILE, "%s %lu %s %ld", sendf.fname,
+					(long) sendf.ftot, tbuf, (long) sendf.ftot );
+				bps->send_eof = 1;
+			}
+		}
+
+		if ( !bps->init && !bps->send_file && !bps->wait_got && !bps->nd_stat
+			&& !bps->sent_eob && !txfd && !bps->nofiles ) {
 			DEBUG(('B',2,"finding files"));
 			DEBUG(('B',3,"oflist: %.8p, fl: %.8p", bps->oflist, fl));
 
@@ -2293,6 +2609,10 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 				rc = cfgi( CFG_AUTOTICSKIP ) ? bps->ticskip : 0;
 
 			while( bps->oflist && !txfd ) {
+				if ( bps->oflist->held ) {
+					bps->oflist = bps->oflist->next;
+					continue;
+				}
 				if ( !bps->oflist->sendas 
 					|| ( rc && istic( bps->oflist->tosend ))
 					|| !( txfd = txopen( bps->oflist->tosend, bps->oflist->sendas )))
@@ -2359,7 +2679,8 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 			continue;
 		}
 
-		wd = ( bps->nmsgs || bps->tx_left || ( bps->send_file && txfd && !bps->wait_for_get));
+		wd = ( bps->nmsgs || bps->tx_left || bps->send_eof
+			|| ( bps->send_file && txfd && !bps->wait_for_get));
 		rd = TRUE;
 		tv.tv_sec = BP_TIMEOUT;
 		tv.tv_usec = 0;
@@ -2394,6 +2715,13 @@ int binkpsession(int mode, ftnaddr_t *remaddr)
 	}
 
 	rc = bps->rc;
+	/*
+	 * Both EOBs mean the peer renamed the last file. Drop the
+	 * saved line. A drop leaves bps->rc at S_OK from the top of
+	 * the loop, so the error flag keeps the line for the retry.
+	 */
+	if ( rc == S_OK && !bps->error )
+		nd_status_clear( bps );
 	if ( bps->error == -1 ) {
 		write_log( "timeout" );
 		binlog_set_result( "timeout" );

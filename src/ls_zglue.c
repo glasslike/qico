@@ -150,6 +150,8 @@ int zmodem_receive(char *c, int canzap) {
 				case FOP_CONT:
 				case FOP_OK:
 					DEBUG(('Z',2,"zmodem_receive: OK %s from %d",f.name,recvf.soff));
+					/* Bytes follow ZRINIT. rxopen() only opened the file. */
+					rx_log_start();
 					frame = ZRINIT;
 					switch((rc=ls_zrecvfile(recvf.soff))) {
 					case ZFERR:

@@ -22,7 +22,7 @@ autoskip,C_STRL,0,NULL
 autosuspend,C_STRL,0,NULL
 autoticskip,C_YESNO,0,"no"
 binkplisted,C_YESNO,0,"yes"
-binkpopt,C_STR,0,"MBM"
+binkpopt,C_STR,0,"MB"
 binlog,C_PATH,0,NULL
 bsooutbound,C_PATH,2,NULL
 callonflavors,C_STR,0,"NDCI"

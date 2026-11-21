@@ -978,10 +978,44 @@ int outbound_setstatus(const ftnaddr_t *fa, sts_t *st)
 		fprintf( f, "%d %d %lu %lu", st->try, st->flags, st->htime, st->utime );
 		if ( st->bp.name && st->bp.flags )
 			fprintf( f, " %d %lu %lu %s", st->bp.flags, (unsigned long) st->bp.size, st->bp.time, st->bp.name );
+		if ( fflush( f ) || fsync( fileno( f ))) {
+			fclose( f );
+			return 0;
+		}
 		fclose( f );
 		return 1;
 	}
 	return 0;
+}
+
+
+/*
+ * ND session status (FSP-1027): the M_GOT line for the last file the
+ * peer has not yet confirmed by a following M_FILE or M_EOB.
+ * A NULL name clears it. Dial counters already in the .qst are kept.
+ * The write is synced before we return, so a crash cannot lose the
+ * line after the outbound file has been removed.
+ */
+int outbound_put_bpstatus(const ftnaddr_t *fa, const char *name, size_t size, time_t mtime)
+{
+	sts_t st;
+
+	memset( &st, 0, sizeof( st ));
+	outbound_getstatus( fa, &st );
+	xfree( st.bp.name );
+	memset( &st.bp, 0, sizeof( st.bp ));
+	if ( name && *name ) {
+		st.bp.flags = 1;
+		st.bp.size = size;
+		st.bp.time = mtime;
+		st.bp.name = xstrdup( name );
+	}
+	if ( !outbound_setstatus( fa, &st )) {
+		xfree( st.bp.name );
+		return 0;
+	}
+	xfree( st.bp.name );
+	return 1;
 }
 
 

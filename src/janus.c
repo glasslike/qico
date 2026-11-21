@@ -271,6 +271,8 @@ int janus(void)
 							goto breakout;
 						case FOP_CONT:
 						case FOP_OK:
+							/* Bytes follow. rxopen() only opened the file. */
+							rx_log_start();
 							qpfrecv();
 							rxstate=RRCVBLK;
 							rxpos=recvf.foff;

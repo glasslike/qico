@@ -140,6 +140,9 @@ struct _BP_SESSION {
 
     int wait_for_get;		/* In NR mode we sent -1 as file offset 
     				   and wait for M_GET */
+    int send_eof;		/* Send one zero-length data frame */
+    int nd_stat;		/* Offering saved ND status, no local file */
+    int nd_stat_sent;		/* Status already offered in this session */
     int wait_got;
     int wait_addr;		/* Awaiting remote address */
     int sent_eob;

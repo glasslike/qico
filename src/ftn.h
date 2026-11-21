@@ -212,6 +212,7 @@ int	outbound_request(const ftnaddr_t *, slist_t *);
 int	outbound_poll(const ftnaddr_t *, int);
 int	outbound_setstatus(const ftnaddr_t *fa, sts_t *);
 int	outbound_getstatus(const ftnaddr_t *fa, sts_t *);
+int	outbound_put_bpstatus(const ftnaddr_t *fa, const char *name, size_t size, time_t mtime);
 int	asoflist(flist_t **fl, const ftnaddr_t *, int);
 
 /* queue.c */

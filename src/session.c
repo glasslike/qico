@@ -128,6 +128,7 @@ void addflist(flist_t **fl, char *loc, char *rem, char kill, off_t off, FILE *lo
 	q->tosend = loc;
 	q->type = type;
 	q->suspend = 0;
+	q->held = 0;
 }
 
 static int boxflist(flist_t **fl, char *path)

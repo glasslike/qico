@@ -2004,6 +2004,8 @@ int hydra_send(char *txpathname, char *txalias)
 
                              case FOP_CONT:
                              case FOP_OK:
+                                 /* Bytes follow this ack. rxopen() only opened the file. */
+                                 rx_log_start();
                                  rxoffset = rxPos = ftell(rxfd);
                                  /* rxStart = 0L; */
                                  rxtimer = h_timer_reset();

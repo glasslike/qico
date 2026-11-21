@@ -100,7 +100,13 @@ int	emsi_recv(int, ninfo_t *);
 /* protfm.c */
 void	prot_ftime_utc(int);
 int	rxopen(char *, time_t, off_t, FILE **);
+void	rx_log_start(void);
 int	rxclose(FILE **, int);
+int	rx_tmp_done(const char *, off_t, time_t);
+int	rxpark(FILE **);
+int	rxhold_name(const char *, time_t, off_t);
+int	rxunpark(void);
+void	rxpark_drop(void);
 FILE	*txopen(char *, char *);
 int	txclose(FILE **, int);
 void	log_rinfo(ninfo_t *);

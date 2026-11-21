@@ -604,17 +604,27 @@ protorder	HJDZ1C
 # make sure you have properly working DNS.
 ;resolvehostname	yes
 
-# Binkp options. Omitted, the default is MBM: CRAM-MD5 is offered
-# and a plaintext password is still accepted.
-# M - MD5 authentication
-# C - Crypt traffic
-# R - Not-Reliable mode
-# D - No-Dupes mode (currently not supported)
-# B - MultiBatch mode
+# Binkp options. Omitted, the default is MB: CRAM-MD5 is offered
+# and a plaintext password is still accepted. Letters may be separated
+# by spaces. Case does not matter. An unknown letter is logged and skipped.
+# Leaving a letter out stops our offer of that mode. MD5, CRYPT and CHAT
+# then stay off, and P is our own ban on a clear password. The peer can
+# still turn on ND, NR and MB: an answer enters ND when the caller sends
+# ND without NDA, NR follows that or the peer's OPT NR, and a binkp/1.1
+# session uses MB without B. An outgoing call always sends NDA.
+# M - MD5 authentication. A clear password is still accepted.
+# C - Crypt traffic. Used only together with a password and MD5.
+# R - Not-Reliable mode on our own call. An answer does not advertise
+#     NR; the caller's OPT NR is what turns the session non-reliable.
+# D - No-Dupes mode. NR is requested with it: ND implies NR, and a
+#     partial from a dropped batch is resumed from the bytes already
+#     received. The session still stays reliable when the peer offers
+#     neither ND nor NDA.
+# B - MultiBatch mode. A binkp/1.1 peer still gets MB without this.
 # P - Disable plain authentication on an answer and on our own call.
 #     Without P a peer that offers no CRAM challenge still gets the
-#     password in clear.
-# T - Chat enable
+#     password in clear. P includes M.
+# T - Chat enable. Chat runs only when the peer also offers it.
 binkpopt	MRBCT
 
 # Apply the `listed' check on BinkP sessions (default yes).
