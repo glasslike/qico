@@ -185,6 +185,12 @@ diz_lf="$stage/.file_id.diz.lf"
 	printf 'Binaries: qico, qctl, qcc (no perl)\n'
 	printf 'Source %s %s UTC\n' "$sha" "$when"
 	printf 'Compiler: %s\n' "$cc_ident"
+	printf '\n'
+	# Public repository, after a blank line, so a BBS drop still names
+	# where the source lives. The URL is 33 columns and the descriptor
+	# is 8 lines; both stay inside the 45-by-10 DIZ limit, which the
+	# checks below enforce.
+	printf 'https://github.com/glasslike/qico\n'
 } > "$diz_lf"
 
 line_no=0
