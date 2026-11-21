@@ -1,6 +1,8 @@
 Version 0.60.5-dev
 ~~~~~~~~~~~~~~~~~~
 - binkp: ND and NDA, as specified in FSP-1027 Draft-1.
+- qcc session log: the Info column lists system, location, and
+  sysop before the peer address. A failure phrase still comes first.
 
 
 Version 0.60.4

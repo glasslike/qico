@@ -180,7 +180,7 @@ The address is cyan. The cursor row keeps the highlight bar, so that row is not 
 
 Sizes are shown as b/k/G/M so they stay easy to read.
 
-Info joins the non-empty fields with `"; "`. A failed session puts the result first, then peer, system, location, and sysop. A successful session skips the result.
+Info joins the non-empty fields with `"; "`. A failed session puts the result first, then system, location, sysop, and peer. A successful session skips the result, so the system name comes first.
 
 ### Card
 

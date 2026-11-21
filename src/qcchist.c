@@ -270,7 +270,9 @@ static void put_spaces(char *dst, int *used, int max, int n)
 
 /*
  * T-Hist text: present fields joined by "; ".
- * A failed session puts the reason first, then peer, system, location, sysop.
+ * A failed session puts the reason first. Then system, location,
+ * sysop, and the peer address last. A successful session skips the
+ * reason, so the system name is first when it is present.
  */
 static void fill_info(char *dst, size_t n, const bl_sess_t *s)
 {
@@ -282,14 +284,14 @@ static void fill_info(char *dst, size_t n, const bl_sess_t *s)
 	dst[0] = '\0';
 	if ( !( s->status & BL_OK ) && s->result[0] )
 		part[k++] = s->result;
-	if ( s->peer[0] )
-		part[k++] = s->peer;
 	if ( s->sysname[0] )
 		part[k++] = s->sysname;
 	if ( s->location[0] )
 		part[k++] = s->location;
 	if ( s->sysop[0] )
 		part[k++] = s->sysop;
+	if ( s->peer[0] )
+		part[k++] = s->peer;
 	for ( i = 0; i < k; i++ ) {
 		const char *p = part[i];
 
